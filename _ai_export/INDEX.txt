@@ -1,0 +1,8 @@
+MAX_CHARS=80000
+ROOTS=app, components, lib
+TOTAL_FILES=43
+
+techstratix_export_01.txt  (77982 chars)
+techstratix_export_02.txt  (75832 chars)
+techstratix_export_03.txt  (72433 chars)
+techstratix_export_04.txt  (65910 chars)

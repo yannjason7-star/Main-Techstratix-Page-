@@ -1,0 +1,1537 @@
+
+
+===== FILE: app\(dashboard)\admin\cohortes\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { Layers, Plus, Calendar, Users, Target, MoreVertical, Loader2, X } from "lucide-react";
+
+type Cohort = {
+  id: string;
+  name: string;
+  status: 'draft' | 'active' | 'completed';
+  start_date: string;
+  end_date: string;
+};
+
+export default function CohortesPage() {
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // États pour la modale de création
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState({
+    name: "",
+    status: "draft" as Cohort['status'],
+    start_date: "",
+    end_date: ""
+  });
+
+  // Charger les données depuis Supabase
+  useEffect(() => {
+    fetchCohorts();
+  }, []);
+
+  const fetchCohorts = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("cohorts")
+        .select("*")
+        .order("start_date", { ascending: false });
+
+      if (error) throw error;
+      if (data) setCohorts(data);
+    } catch (error: any) {
+      alert("❌ Erreur de chargement : " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Créer un nouveau programme
+  const handleCreateCohort = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (new Date(formData.start_date) >= new Date(formData.end_date)) {
+      alert("❌ La date de fin doit être après la date de début !");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { data, error } = await supabase
+        .from("cohorts")
+        .insert([formData])
+        .select();
+
+      if (error) throw error;
+
+      if (data) {
+        setCohorts([data[0], ...cohorts]); // Ajoute le nouveau programme visuellement
+        setIsModalOpen(false); // Ferme la modale
+        setFormData({ name: "", status: "draft", start_date: "", end_date: "" }); // Reset
+        alert("✅ Programme créé avec succès !");
+      }
+    } catch (error: any) {
+      alert("❌ Erreur de création : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Fonction intelligente pour calculer la progression en temps réel
+  const calculateProgress = (start: string, end: string) => {
+    const startDate = new Date(start).getTime();
+    const endDate = new Date(end).getTime();
+    const now = new Date().getTime();
+
+    if (now < startDate) return 0; // Pas encore commencé
+    if (now > endDate) return 100; // Terminé
+
+    const totalDuration = endDate - startDate;
+    const elapsed = now - startDate;
+    return Math.round((elapsed / totalDuration) * 100);
+  };
+
+  // Traduction des statuts pour l'affichage
+  const statusConfig = {
+    draft: { label: "Brouillon / Inscriptions", color: "bg-gray-100 text-gray-600" },
+    active: { label: "En cours", color: "bg-blue-50 text-[#2563EB]" },
+    completed: { label: "Terminé", color: "bg-emerald-50 text-emerald-600" },
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto pb-12">
+      
+      {/* HEADER */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-4">
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">Organisation</p>
+          <h2 className="text-2xl font-medium text-[#101D42]">Programmes & Cohortes</h2>
+        </div>
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center gap-2 bg-[#101D42] hover:bg-[#1a2b5e] text-white px-6 py-3 rounded-full text-xs font-semibold tracking-wide transition-all shadow-sm"
+        >
+          <Plus size={16} /> CRÉER UN PROGRAMME
+        </button>
+      </div>
+
+      {/* LISTE DES COHORTES */}
+      {loading ? (
+        <div className="flex justify-center py-20 text-[#2563EB]"><Loader2 className="animate-spin" size={32} /></div>
+      ) : cohorts.length === 0 ? (
+        <div className="bg-white rounded-3xl border border-gray-200 p-16 text-center text-[#9CA3AF] shadow-sm">
+          <Layers size={48} className="mx-auto mb-4 text-gray-300" />
+          <p className="text-lg font-medium text-[#101D42]">Aucun programme actif.</p>
+          <p className="text-sm mt-1">Créez votre première cohorte pour y regrouper vos startups.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {cohorts.map((cohort) => {
+            const progress = calculateProgress(cohort.start_date, cohort.end_date);
+            const style = statusConfig[cohort.status];
+
+            return (
+              <div key={cohort.id} className="bg-white rounded-[24px] border border-gray-200 p-8 shadow-sm flex flex-col justify-between hover:border-[#2563EB]/30 transition-all group">
+                <div>
+                  <div className="flex justify-between items-start mb-6">
+                    <span className={`text-[10px] font-bold tracking-[0.1em] uppercase px-3 py-1 rounded-full ${style.color}`}>
+                      {style.label}
+                    </span>
+                    <button className="text-gray-400 hover:text-[#101D42]"><MoreVertical size={18} /></button>
+                  </div>
+                  <h3 className="text-xl font-medium text-[#101D42] mb-4">{cohort.name}</h3>
+                  
+                  <div className="space-y-3 mb-8">
+                    <div className="flex items-center gap-3 text-sm text-[#9CA3AF] font-medium">
+                      <Calendar size={16} className="text-[#2563EB]" /> 
+                      {new Date(cohort.start_date).toLocaleDateString('fr-FR')} - {new Date(cohort.end_date).toLocaleDateString('fr-FR')}
+                    </div>
+                    <div className="flex items-center gap-3 text-sm text-[#9CA3AF] font-medium opacity-50">
+                      {/* Pour l'instant, on laisse 0. On fera le matching plus tard */}
+                      <Users size={16} /> 0 Startups assignées
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-[10px] font-bold text-[#9CA3AF] uppercase mb-2">
+                    <span>Progression du programme</span>
+                    <span className="text-[#101D42]">{progress}%</span>
+                  </div>
+                  <div className="w-full bg-[#F8FAFC] rounded-full h-2">
+                    <div className={`h-2 rounded-full ${cohort.status === 'completed' ? 'bg-emerald-500' : 'bg-[#2563EB]'}`} style={{ width: `${progress}%` }}></div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ========================================= */}
+      {/* MODALE DE CRÉATION                        */}
+      {/* ========================================= */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#101D42]/40 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-[#FAFAFA]">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-50 text-[#2563EB] rounded-lg"><Layers size={20} /></div>
+                <h3 className="text-lg font-bold text-[#101D42]">Nouveau Programme</h3>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-[#101D42]"><X size={20} /></button>
+            </div>
+
+            <form onSubmit={handleCreateCohort} className="p-8 space-y-6">
+              
+              <div>
+                <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Nom de la cohorte <span className="text-red-500">*</span></label>
+                <input 
+                  type="text" required 
+                  value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" 
+                  placeholder="Ex: Batch Été 2026" 
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Statut initial <span className="text-red-500">*</span></label>
+                <select 
+                  required 
+                  value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value as Cohort['status']})}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42] bg-white"
+                >
+                  <option value="draft">Brouillon (Ouvert aux inscriptions)</option>
+                  <option value="active">Actif (En cours)</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Date de début <span className="text-red-500">*</span></label>
+                  <input 
+                    type="date" required 
+                    value={formData.start_date} onChange={(e) => setFormData({...formData, start_date: e.target.value})}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Date de fin <span className="text-red-500">*</span></label>
+                  <input 
+                    type="date" required 
+                    value={formData.end_date} onChange={(e) => setFormData({...formData, end_date: e.target.value})}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" 
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4">
+                <button type="submit" disabled={saving} className="w-full py-4 rounded-full font-bold tracking-wide text-white transition-colors text-xs flex items-center justify-center gap-2 bg-[#101D42] hover:bg-[#1a2b5e]">
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : "GÉNÉRER LE PROGRAMME"}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\admin\events\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { CalendarDays, Plus, MapPin, Video, Users, Loader2, X, MoreVertical } from "lucide-react";
+
+type EventType = {
+  id: string;
+  title: string;
+  type: string;
+  event_date: string;
+  event_time: string;
+  mode: string;
+  location: string;
+  attendees: number;
+};
+
+export default function AdminEventsPage() {
+  const [events, setEvents] = useState<EventType[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // États pour la modale
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  
+  const [formData, setFormData] = useState({
+    title: "",
+    type: "Masterclass",
+    event_date: "",
+    event_time: "",
+    mode: "En Ligne",
+    location: ""
+  });
+
+  // Charger les événements au démarrage
+  useEffect(() => {
+    fetchEvents();
+  }, []);
+
+  const fetchEvents = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("events")
+        .select("*")
+        .order("event_date", { ascending: true }); // Du plus proche au plus lointain
+
+      if (error) throw error;
+      if (data) setEvents(data);
+    } catch (error: any) {
+      alert("❌ Erreur de chargement : " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    
+    try {
+      const { data, error } = await supabase
+        .from("events")
+        .insert([{
+          title: formData.title,
+          type: formData.type,
+          event_date: formData.event_date,
+          event_time: formData.event_time,
+          mode: formData.mode,
+          location: formData.location,
+          attendees: 0 // Par défaut à la création
+        }])
+        .select();
+
+      if (error) throw error;
+
+      if (data) {
+        // Ajout du nouvel événement et tri
+        const newEvents = [...events, data[0]].sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
+        setEvents(newEvents);
+        
+        setIsModalOpen(false);
+        setFormData({ title: "", type: "Masterclass", event_date: "", event_time: "", mode: "En Ligne", location: "" });
+        alert("✅ Événement planifié avec succès !");
+      }
+    } catch (error: any) {
+      alert("❌ Erreur de création : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Fonction pour extraire le Jour et le Mois d'une date (Ex: "15 Jan")
+  const formatDateForCard = (dateString: string) => {
+    const dateObj = new Date(dateString);
+    const day = dateObj.toLocaleDateString('fr-FR', { day: '2-digit' });
+    const month = dateObj.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '');
+    return { day, month };
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto pb-12">
+      
+      {/* HEADER */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-4">
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">Calendrier</p>
+          <h2 className="text-2xl font-medium text-[#101D42]">Gestion des Événements</h2>
+        </div>
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center gap-2 bg-[#101D42] hover:bg-[#1a2b5e] text-white px-6 py-3 rounded-full text-xs font-semibold tracking-wide transition-all shadow-sm"
+        >
+          <Plus size={16} /> PLANIFIER UN ÉVÉNEMENT
+        </button>
+      </div>
+
+      {/* LISTE DES ÉVÉNEMENTS */}
+      {loading ? (
+        <div className="flex justify-center py-20 text-[#2563EB]"><Loader2 className="animate-spin" size={32} /></div>
+      ) : events.length === 0 ? (
+        <div className="bg-white rounded-3xl border border-gray-200 p-16 text-center text-[#9CA3AF] shadow-sm">
+          <CalendarDays size={48} className="mx-auto mb-4 text-gray-300" />
+          <p className="text-lg font-medium text-[#101D42]">Le calendrier est vide.</p>
+          <p className="text-sm mt-1">Planifiez votre premier événement pour l'écosystème.</p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {events.map((event) => {
+            const { day, month } = formatDateForCard(event.event_date);
+            
+            return (
+              <div key={event.id} className="bg-white rounded-[24px] border border-gray-200 p-6 shadow-sm flex flex-col md:flex-row gap-6 items-center hover:border-[#2563EB]/40 transition-colors group relative">
+                
+                {/* Bouton Options (en haut à droite) */}
+                <button className="absolute top-6 right-6 text-gray-300 hover:text-[#101D42] transition-colors hidden md:block">
+                  <MoreVertical size={18} />
+                </button>
+
+                {/* Boîte de date */}
+                <div className="bg-[#F8FAFC] border border-gray-100 rounded-2xl w-24 h-24 flex flex-col items-center justify-center shrink-0 group-hover:bg-[#101D42] group-hover:text-white transition-colors">
+                  <span className="text-2xl font-bold">{day}</span>
+                  <span className="text-xs uppercase tracking-widest font-medium opacity-80">{month}</span>
+                </div>
+
+                {/* Détails */}
+                <div className="flex-1 space-y-2 text-center md:text-left">
+                  <span className="text-[10px] font-bold tracking-[0.1em] text-[#2563EB] bg-[#EFF6FF] px-3 py-1 rounded-full uppercase">
+                    {event.type}
+                  </span>
+                  <h3 className="text-xl font-medium text-[#101D42] mt-2">{event.title}</h3>
+                  <div className="flex flex-wrap justify-center md:justify-start gap-4 text-xs font-medium text-[#9CA3AF]">
+                    <span className="flex items-center gap-1.5"><CalendarDays size={14} /> {event.event_time}</span>
+                    <span className="flex items-center gap-1.5">
+                      {event.mode === 'En Ligne' ? <Video size={14} /> : <MapPin size={14} />} 
+                      {event.location}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Stats / Inscrits */}
+                <div className="bg-gray-50 px-4 py-3 rounded-xl flex flex-col items-center justify-center shrink-0 min-w-[120px] md:mr-10">
+                  <div className="flex items-center gap-2 text-[#101D42] font-bold text-lg mb-1">
+                    <Users size={16} className="text-[#9CA3AF]" /> {event.attendees}
+                  </div>
+                  <span className="text-[10px] font-bold uppercase text-[#9CA3AF] tracking-wider">Inscrits</span>
+                </div>
+
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ========================================= */}
+      {/* MODALE DE CRÉATION                        */}
+      {/* ========================================= */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#101D42]/40 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-lg rounded-[32px] overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-[#FAFAFA]">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-50 text-[#2563EB] rounded-lg"><CalendarDays size={20} /></div>
+                <h3 className="text-lg font-bold text-[#101D42]">Planifier un Événement</h3>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-[#101D42]"><X size={20} /></button>
+            </div>
+
+            <form onSubmit={handleCreateEvent} className="p-8 space-y-6">
+              
+              <div>
+                <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Titre de l'événement <span className="text-red-500">*</span></label>
+                <input 
+                  type="text" required 
+                  value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" 
+                  placeholder="Ex: Masterclass Pitch Deck" 
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Type <span className="text-red-500">*</span></label>
+                  <select 
+                    required 
+                    value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42] bg-white"
+                  >
+                    <option value="Masterclass">Masterclass</option>
+                    <option value="Networking">Networking</option>
+                    <option value="Événement Majeur">Événement Majeur</option>
+                    <option value="Atelier">Atelier Pratique</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Mode <span className="text-red-500">*</span></label>
+                  <select 
+                    required 
+                    value={formData.mode} onChange={(e) => setFormData({...formData, mode: e.target.value})}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42] bg-white"
+                  >
+                    <option value="En Ligne">En Ligne (Visio)</option>
+                    <option value="Présentiel">Présentiel</option>
+                    <option value="Hybride">Hybride</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Date <span className="text-red-500">*</span></label>
+                  <input 
+                    type="date" required 
+                    value={formData.event_date} onChange={(e) => setFormData({...formData, event_date: e.target.value})}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Heure (GMT) <span className="text-red-500">*</span></label>
+                  <input 
+                    type="time" required 
+                    value={formData.event_time} onChange={(e) => setFormData({...formData, event_time: e.target.value})}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" 
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Lieu ou Lien <span className="text-red-500">*</span></label>
+                <input 
+                  type="text" required 
+                  value={formData.location} onChange={(e) => setFormData({...formData, location: e.target.value})}
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" 
+                  placeholder={formData.mode === 'Présentiel' ? 'Ex: Hôtel Ivoire, Abidjan' : 'Ex: Lien Zoom / Google Meet'} 
+                />
+              </div>
+
+              <div className="pt-4 border-t border-gray-100 flex gap-4">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 rounded-full font-bold tracking-wide text-gray-500 hover:bg-gray-100 transition-colors text-xs">
+                  ANNULER
+                </button>
+                <button type="submit" disabled={saving} className="flex-1 py-4 rounded-full font-bold tracking-wide text-white transition-colors text-xs flex items-center justify-center gap-2 bg-[#2563EB] hover:bg-blue-700 shadow-md">
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : "PUBLIER L'ÉVÉNEMENT"}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\admin\lms\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { BookOpen, Plus, PlayCircle, Lock, Unlock, MoreVertical, FileVideo, Loader2, X, DollarSign } from "lucide-react";
+
+// Le type correspondant à notre table 'courses' dans Supabase
+type Course = {
+  id: string;
+  title: string;
+  category: string;
+  duration: string;
+  level: string;
+  instructor: string;
+  is_premium: boolean;
+  price: number;
+  description: string;
+};
+
+export default function AdminLMSPage() {
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  // États pour la modale de création
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState({
+    title: "",
+    category: "BUSINESS",
+    duration: "",
+    level: "Débutant",
+    instructor: "",
+    is_premium: false,
+    price: 0,
+    description: ""
+  });
+
+  // Charger les vrais cours depuis la base de données
+  useEffect(() => {
+    fetchCourses();
+  }, []);
+
+  const fetchCourses = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("courses")
+        .select("*")
+        .order("title", { ascending: true }); // On trie par ordre alphabétique
+
+      if (error) throw error;
+      if (data) setCourses(data as Course[]);
+    } catch (error: any) {
+      alert("❌ Erreur de chargement : " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Publier un nouveau cours
+  const handleCreateCourse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    
+    try {
+      // Insertion dans la table 'courses'
+      const { data, error } = await supabase
+        .from("courses")
+        .insert([{
+          title: formData.title,
+          category: formData.category,
+          duration: formData.duration,
+          level: formData.level,
+          instructor: formData.instructor,
+          is_premium: formData.is_premium,
+          price: formData.is_premium ? formData.price : 0,
+          description: formData.description
+        }])
+        .select();
+
+      if (error) throw error;
+
+      if (data) {
+        setCourses([data[0], ...courses]); // Met à jour l'interface immédiatement
+        setIsModalOpen(false); // Ferme la modale
+        
+        // Reset du formulaire
+        setFormData({ title: "", category: "BUSINESS", duration: "", level: "Débutant", instructor: "", is_premium: false, price: 0, description: "" });
+        alert("✅ Nouveau cours publié avec succès ! Les startups peuvent maintenant le voir.");
+      }
+    } catch (error: any) {
+      alert("❌ Erreur de création : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-7xl mx-auto pb-12">
+      
+      {/* HEADER */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-4">
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">E-Learning</p>
+          <h2 className="text-2xl font-medium text-[#101D42]">Gestion des Formations (LMS)</h2>
+        </div>
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center gap-2 bg-[#101D42] hover:bg-[#1a2b5e] text-white px-6 py-3 rounded-full text-xs font-semibold tracking-wide transition-all shadow-sm"
+        >
+          <Plus size={16} /> NOUVEAU COURS
+        </button>
+      </div>
+
+      {/* TABLEAU DES COURS */}
+      <div className="bg-white rounded-[24px] border border-gray-200 shadow-sm overflow-hidden">
+        <div className="grid grid-cols-12 gap-4 p-6 border-b border-gray-100 bg-[#FAFAFA] text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase">
+          <div className="col-span-12 md:col-span-6">Titre du cours & Instructeur</div>
+          <div className="col-span-4 md:col-span-2">Accès & Prix</div>
+          <div className="col-span-4 md:col-span-3">Niveau & Durée</div>
+          <div className="col-span-4 md:col-span-1 text-right">Actions</div>
+        </div>
+
+        <div>
+          {loading ? (
+            <div className="flex justify-center py-20 text-[#2563EB]"><Loader2 className="animate-spin" size={32} /></div>
+          ) : courses.length === 0 ? (
+            <div className="p-16 text-center text-[#9CA3AF]">
+              <BookOpen size={48} className="mx-auto mb-4 text-gray-300" />
+              <p className="text-lg font-medium text-[#101D42]">Le catalogue est vide.</p>
+              <p className="text-sm mt-1">Créez votre première formation pour vos startups.</p>
+            </div>
+          ) : (
+            courses.map((course) => (
+              <div key={course.id} className="grid grid-cols-12 gap-4 p-6 border-b border-gray-50 last:border-0 items-center hover:bg-[#F8FAFC] transition-colors group">
+                
+                {/* Colonne 1 : Titre */}
+                <div className="col-span-12 md:col-span-6 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-[#EFF6FF] text-[#2563EB] flex items-center justify-center shrink-0">
+                    <PlayCircle size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-[#101D42] mb-1">{course.title}</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold tracking-[0.1em] text-gray-500 uppercase">{course.category}</span>
+                      <span className="text-xs text-gray-400">• Par {course.instructor}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Colonne 2 : Accès */}
+                <div className="col-span-4 md:col-span-2 flex flex-col items-start gap-1">
+                  {course.is_premium ? (
+                    <>
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-orange-600 bg-orange-50 px-2.5 py-1 rounded-md uppercase">
+                        <Lock size={12} /> Premium
+                      </span>
+                      <span className="text-xs font-bold text-[#101D42] ml-1">{course.price} €</span>
+                    </>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wider text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md uppercase">
+                      <Unlock size={12} /> Inclus
+                    </span>
+                  )}
+                </div>
+
+                {/* Colonne 3 : Détails */}
+                <div className="col-span-4 md:col-span-3 flex flex-col gap-1 text-xs text-[#9CA3AF] font-medium">
+                  <span className="flex items-center gap-2 text-[#101D42]"><FileVideo size={14} className="text-[#2563EB]"/> {course.level}</span>
+                  <span className="ml-5">{course.duration}</span>
+                </div>
+
+                {/* Colonne 4 : Actions */}
+                <div className="col-span-4 md:col-span-1 flex items-center justify-end gap-6">
+                  <button className="text-gray-300 hover:text-[#101D42] transition-colors"><MoreVertical size={18} /></button>
+                </div>
+
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* ========================================= */}
+      {/* MODALE DE CRÉATION DE COURS               */}
+      {/* ========================================= */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#101D42]/40 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-[32px] shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            
+            <div className="sticky top-0 z-10 p-6 border-b border-gray-100 flex items-center justify-between bg-white/90 backdrop-blur-md">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-50 text-[#2563EB] rounded-lg"><BookOpen size={20} /></div>
+                <h3 className="text-lg font-bold text-[#101D42]">Publier une formation</h3>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-[#101D42]"><X size={20} /></button>
+            </div>
+
+            <form onSubmit={handleCreateCourse} className="p-8 space-y-6">
+              
+              <div>
+                <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Titre du cours <span className="text-red-500">*</span></label>
+                <input type="text" required value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" placeholder="Ex: Masterclass Vente B2B" />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Catégorie <span className="text-red-500">*</span></label>
+                  <select required value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42] bg-white">
+                    <option value="BUSINESS">Business & Vente</option>
+                    <option value="FINANCE">Finance & Levée</option>
+                    <option value="PRODUIT">Produit & Tech</option>
+                    <option value="MARKETING">Marketing & Growth</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Niveau <span className="text-red-500">*</span></label>
+                  <select required value={formData.level} onChange={(e) => setFormData({...formData, level: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42] bg-white">
+                    <option value="Débutant">Débutant</option>
+                    <option value="Intermédiaire">Intermédiaire</option>
+                    <option value="Avancé">Avancé</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Durée estimée <span className="text-red-500">*</span></label>
+                  <input type="text" required value={formData.duration} onChange={(e) => setFormData({...formData, duration: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" placeholder="Ex: 2h 30m" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Instructeur / Expert <span className="text-red-500">*</span></label>
+                  <input type="text" required value={formData.instructor} onChange={(e) => setFormData({...formData, instructor: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" placeholder="Ex: Sarah Diop" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Description du cours <span className="text-red-500">*</span></label>
+                <textarea required rows={3} value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42] resize-none" placeholder="Ce que les startups vont apprendre..." />
+              </div>
+
+              {/* GESTION PREMIUM / MONÉTISATION */}
+              <div className="bg-orange-50 border border-orange-100 rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <input 
+                    type="checkbox" id="premium" 
+                    checked={formData.is_premium} 
+                    onChange={(e) => setFormData({...formData, is_premium: e.target.checked})}
+                    className="w-5 h-5 rounded border-orange-300 text-orange-600 focus:ring-orange-600"
+                  />
+                  <label htmlFor="premium" className="text-sm font-bold text-orange-800 flex items-center gap-2 cursor-pointer">
+                    <Lock size={16} /> Contenu Premium (Payant)
+                  </label>
+                </div>
+                
+                {formData.is_premium && (
+                  <div className="ml-8">
+                    <label className="block text-xs font-bold tracking-[0.1em] text-orange-800 uppercase mb-2">Prix de vente (€) <span className="text-red-500">*</span></label>
+                    <div className="relative w-32">
+                      <DollarSign size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-orange-500" />
+                      <input type="number" min="1" required={formData.is_premium} value={formData.price} onChange={(e) => setFormData({...formData, price: parseFloat(e.target.value)})} className="w-full pl-9 pr-4 py-2 rounded-lg border border-orange-200 focus:outline-none focus:border-orange-500 text-sm text-[#101D42]" placeholder="99.99" />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-gray-100 flex gap-4">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 rounded-full font-bold tracking-wide text-gray-500 hover:bg-gray-100 transition-colors text-xs">
+                  ANNULER
+                </button>
+                <button type="submit" disabled={saving} className="flex-1 py-4 rounded-full font-bold tracking-wide text-white transition-colors text-xs flex items-center justify-center gap-2 bg-[#2563EB] hover:bg-blue-700 shadow-md">
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : "PUBLIER LE COURS"}
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\admin\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { PieChart, TrendingUp, Users, BookOpen, Activity, Clock, ShieldCheck, Loader2, Rocket } from "lucide-react";
+type RecentEvent = {
+  id: string;
+  title: string;
+  desc: string;
+  time: string;
+  dateObj: Date;
+  type: 'signup' | 'review';
+};
+
+export default function AdminOverviewPage() {
+  const [loading, setLoading] = useState(true);
+  
+  // États pour les Vraies Données
+  const [stats, setStats] = useState({
+    pending: 0,
+    activeStartups: 0,
+    activeNetwork: 0, // Mentors + Investisseurs
+    totalCourses: 0
+  });
+  
+  const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+
+      // 1. Récupération de tous les profils pour les KPIs
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, role, status, full_name, created_at")
+        .neq("role", "admin");
+
+      if (profilesError) throw profilesError;
+
+      // 2. Récupération des cours
+      const { count: courseCount } = await supabase
+        .from("courses")
+        .select("*", { count: 'exact', head: true });
+
+      // 3. Récupération des derniers logs de modération
+      const { data: logs } = await supabase
+        .from("review_logs")
+        .select("*, profiles!review_logs_profile_id_fkey(full_name)")
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (profiles) {
+        // Calcul des vrais KPIs
+        setStats({
+          pending: profiles.filter(p => p.status === 'pending').length,
+          activeStartups: profiles.filter(p => p.role === 'startup' && p.status === 'approved').length,
+          activeNetwork: profiles.filter(p => (p.role === 'mentor' || p.role === 'investor') && p.status === 'approved').length,
+          totalCourses: courseCount || 0
+        });
+
+        // Construction de la Timeline (Événements Récents)
+        let events: RecentEvent[] = [];
+
+        // Ajouter les nouvelles inscriptions
+        const recentSignups = profiles
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5)
+          .map(p => ({
+            id: `signup_${p.id}`,
+            title: "Nouveau Dossier",
+            desc: `${p.full_name} s'est inscrit en tant que ${p.role}.`,
+            time: new Date(p.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+            dateObj: new Date(p.created_at),
+            type: 'signup' as const
+          }));
+        
+        events = [...events, ...recentSignups];
+
+        // Ajouter les actions de modération
+        if (logs) {
+          const recentReviews = logs.map(l => {
+            const profileName = l.profiles?.full_name || "Un candidat";
+            let actionStr = "";
+            if (l.new_status === 'approved') actionStr = "a été approuvé(e)";
+            else if (l.new_status === 'rejected') actionStr = "a été refusé(e)";
+            else if (l.new_status === 'under_review') actionStr = "est en cours d'examen";
+            else actionStr = `est passé(e) en ${l.new_status}`;
+
+            return {
+              id: `log_${l.id}`,
+              title: "Décision d'Administration",
+              desc: `Le dossier de ${profileName} ${actionStr}.`,
+              time: new Date(l.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+              dateObj: new Date(l.created_at),
+              type: 'review' as const
+            };
+          });
+          events = [...events, ...recentReviews];
+        }
+
+        // Trier par date la plus récente et garder les 5 premiers
+        events.sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime());
+        setRecentEvents(events.slice(0, 5));
+      }
+
+    } catch (error: any) {
+      console.error("Erreur Dashboard:", error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex justify-center items-center h-full pt-20"><Loader2 className="animate-spin text-[#2563EB]" size={40} /></div>;
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto pb-12">
+      
+      {/* HEADER */}
+      <div className="mb-10">
+        <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">Tour de Contrôle</p>
+        <h2 className="text-2xl font-medium text-[#101D42]">Performances de l'Incubateur</h2>
+      </div>
+
+      {/* 4 CARTES KPI (Connectées à Supabase) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-[24px] border border-gray-200 shadow-sm hover:border-[#2563EB]/30 transition-colors">
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-orange-50 text-orange-600">
+              <Clock size={24} />
+            </div>
+          </div>
+          <p className="text-xs font-bold text-[#9CA3AF] uppercase tracking-wider mb-1">Dossiers en attente</p>
+          <h3 className="text-3xl font-medium text-[#101D42]">{stats.pending}</h3>
+          <p className="text-xs font-medium text-orange-600 mt-2">À traiter</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-[24px] border border-gray-200 shadow-sm hover:border-[#2563EB]/30 transition-colors">
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-emerald-50 text-emerald-600">
+              <Rocket size={24} />
+            </div>
+          </div>
+          <p className="text-xs font-bold text-[#9CA3AF] uppercase tracking-wider mb-1">Startups Accélérées</p>
+          <h3 className="text-3xl font-medium text-[#101D42]">{stats.activeStartups}</h3>
+          <p className="text-xs font-medium text-emerald-600 mt-2">Profils approuvés</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-[24px] border border-gray-200 shadow-sm hover:border-[#2563EB]/30 transition-colors">
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-purple-50 text-purple-600">
+              <Users size={24} />
+            </div>
+          </div>
+          <p className="text-xs font-bold text-[#9CA3AF] uppercase tracking-wider mb-1">Réseau d'Experts</p>
+          <h3 className="text-3xl font-medium text-[#101D42]">{stats.activeNetwork}</h3>
+          <p className="text-xs font-medium text-[#9CA3AF] mt-2">Mentors & Investisseurs</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-[24px] border border-gray-200 shadow-sm hover:border-[#2563EB]/30 transition-colors">
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-blue-50 text-[#2563EB]">
+              <BookOpen size={24} />
+            </div>
+          </div>
+          <p className="text-xs font-bold text-[#9CA3AF] uppercase tracking-wider mb-1">Formations LMS</p>
+          <h3 className="text-3xl font-medium text-[#101D42]">{stats.totalCourses}</h3>
+          <p className="text-xs font-medium text-[#9CA3AF] mt-2">Cours publiés</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* GRAPHIQUE VISUEL D'ENGAGEMENT (Données visuelles pour la démo) */}
+        <div className="lg:col-span-2 bg-white rounded-[24px] border border-gray-200 p-8 shadow-sm">
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-lg font-medium text-[#101D42]">Trafic & Engagement (30 derniers jours)</h3>
+            <span className="bg-[#F8FAFC] border border-gray-200 text-xs font-bold text-[#101D42] py-2 px-4 rounded-full">
+              Vue Globale
+            </span>
+          </div>
+          
+          <div className="h-64 flex items-end justify-between gap-2">
+            {[40, 60, 45, 80, 55, 90, 75, 100, 85, 65, 95, 70].map((height, i) => (
+              <div key={i} className="w-full flex flex-col items-center gap-2 group">
+                <div className="w-full bg-[#E2E8F0] group-hover:bg-[#2563EB] rounded-t-md transition-colors relative" style={{ height: `${height}%` }}>
+                  <div className="opacity-0 group-hover:opacity-100 absolute -top-8 left-1/2 -translate-x-1/2 bg-[#101D42] text-white text-[10px] py-1 px-2 rounded font-medium transition-opacity">
+                    {height}%
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold text-[#9CA3AF]">J-{12-i}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* TIMELINE : ÉVÉNEMENTS RÉCENTS (Connectée à Supabase) */}
+        <div className="bg-white rounded-[24px] border border-gray-200 p-8 shadow-sm flex flex-col">
+          <h3 className="text-lg font-medium text-[#101D42] mb-6">Événements Récents</h3>
+          <div className="flex-1 space-y-6">
+            
+            {recentEvents.length === 0 ? (
+              <p className="text-sm text-gray-500 italic">Aucune activité récente.</p>
+            ) : (
+              recentEvents.map((event, i) => (
+                <div key={event.id} className="flex gap-4 items-start relative">
+                  <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 z-10 ${event.type === 'signup' ? 'bg-[#2563EB]' : 'bg-emerald-500'}`}></div>
+                  
+                  {/* Le trait vertical pour relier la timeline (sauf pour le dernier élément) */}
+                  {i !== recentEvents.length - 1 && (
+                    <div className="absolute left-1 top-4 bottom-[-16px] w-[1px] bg-gray-200 z-0"></div>
+                  )}
+                  
+                  <div>
+                    <h4 className="text-sm font-medium text-[#101D42]">{event.title}</h4>
+                    <p className="text-xs text-[#9CA3AF] my-0.5 leading-relaxed">{event.desc}</p>
+                    <span className="text-[10px] font-bold text-gray-400">{event.time}</span>
+                  </div>
+                </div>
+              ))
+            )}
+            
+          </div>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\admin\reports\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { FileText, Download, BarChart3, TrendingUp, DownloadCloud, Loader2, Users, Rocket } from "lucide-react";
+
+export default function AdminReportsPage() {
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [stats, setStats] = useState({
+    startups: 0,
+    mentors: 0,
+    investors: 0,
+    courses: 0,
+    events: 0
+  });
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      setLoading(true);
+      
+      // On compte les profils approuvés par rôle
+      const { count: startupCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'startup').eq('status', 'approved');
+      const { count: mentorCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'mentor').eq('status', 'approved');
+      const { count: investorCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'investor').eq('status', 'approved');
+      
+      // On compte les cours et événements
+      const { count: courseCount } = await supabase.from('courses').select('*', { count: 'exact', head: true });
+      const { count: eventCount } = await supabase.from('events').select('*', { count: 'exact', head: true });
+
+      setStats({
+        startups: startupCount || 0,
+        mentors: mentorCount || 0,
+        investors: investorCount || 0,
+        courses: courseCount || 0,
+        events: eventCount || 0
+      });
+      
+    } catch (error: any) {
+      console.error("Erreur stats:", error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    setGenerating(true);
+    // Simulation de génération d'un PDF complexe
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    setGenerating(false);
+    alert("✅ Simulation : Le rapport PDF 'Impact_TechStratix_2026.pdf' a été généré et téléchargé avec les données en temps réel !");
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto pb-12">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-4">
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">Export & Data</p>
+          <h2 className="text-2xl font-medium text-[#101D42]">Rapports d'Impact</h2>
+        </div>
+        <button 
+          onClick={handleGenerateReport}
+          disabled={generating || loading}
+          className="flex items-center gap-2 bg-[#2563EB] hover:bg-blue-700 text-white px-6 py-3 rounded-full text-xs font-semibold tracking-wide transition-all shadow-sm disabled:opacity-50"
+        >
+          {generating ? <Loader2 size={16} className="animate-spin" /> : <BarChart3 size={16} />} 
+          {generating ? "GÉNÉRATION EN COURS..." : "GÉNÉRER UN RAPPORT (PDF)"}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-20 text-[#2563EB]"><Loader2 className="animate-spin" size={32} /></div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div className="bg-[#101D42] rounded-[24px] p-8 text-white relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/3"></div>
+              <Rocket size={24} className="mb-6 text-[#2563EB]" />
+              <p className="text-xs font-bold tracking-widest text-gray-400 uppercase mb-2">Startups Accélérées</p>
+              <h3 className="text-5xl font-serif">{stats.startups}</h3>
+            </div>
+            <div className="bg-[#FAFAFA] border border-gray-200 rounded-[24px] p-8">
+              <Users size={24} className="mb-6 text-[#101D42]" />
+              <p className="text-xs font-bold tracking-widest text-[#9CA3AF] uppercase mb-2">Réseau d'Experts</p>
+              <h3 className="text-5xl font-serif text-[#101D42]">{stats.mentors + stats.investors}</h3>
+              <p className="text-xs text-gray-500 mt-2">{stats.mentors} Mentors • {stats.investors} Investisseurs</p>
+            </div>
+            <div className="bg-[#FAFAFA] border border-gray-200 rounded-[24px] p-8">
+              <FileText size={24} className="mb-6 text-[#101D42]" />
+              <p className="text-xs font-bold tracking-widest text-[#9CA3AF] uppercase mb-2">Activité Plateforme</p>
+              <h3 className="text-5xl font-serif text-[#101D42]">{stats.courses + stats.events}</h3>
+              <p className="text-xs text-gray-500 mt-2">{stats.courses} Formations • {stats.events} Événements</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-[24px] border border-gray-200 shadow-sm p-8">
+            <h3 className="text-lg font-medium text-[#101D42] mb-6">Archives des rapports</h3>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 hover:bg-[#F8FAFC] rounded-2xl border border-transparent hover:border-gray-100 transition-all group">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-[#EFF6FF] text-[#2563EB] rounded-xl flex items-center justify-center shrink-0">
+                    <FileText size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-[#101D42]">Rapport d'Impact Annuel 2026</h4>
+                    <p className="text-xs text-[#9CA3AF] mt-1">Statistiques complètes de la plateforme.</p>
+                  </div>
+                </div>
+                <button onClick={handleGenerateReport} className="w-10 h-10 rounded-full bg-[#F8FAFC] text-[#101D42] flex items-center justify-center hover:bg-[#2563EB] hover:text-white transition-colors border border-gray-200">
+                  <DownloadCloud size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\admin\users\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { 
+  CheckCircle2, XCircle, ExternalLink, Phone, Loader2, Search, 
+  AlertTriangle, PauseCircle, Eye, FileText, Download, FolderOpen, Globe
+} from "lucide-react";
+
+type ValidStatus = "pending" | "under_review" | "approved" | "rejected" | "suspended";
+
+type Profile = {
+  id: string;
+  full_name: string;
+  role: string;
+  status: ValidStatus;
+  phone: string;
+  company: string;
+  application_details: any;
+  rejection_reason: string;
+  created_at: string;
+  startup_profiles?: any[];
+  mentor_profiles?: any[];
+  investor_profiles?: any[];
+  kyc_documents?: any[];
+};
+
+export default function AdminUsersPage() {
+  const [adminId, setAdminId] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<Profile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<ValidStatus>("pending");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedCandidate, setSelectedCandidate] = useState<Profile | null>(null);
+  const [decisionType, setDecisionType] = useState<ValidStatus | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [internalComment, setInternalComment] = useState("");
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) setAdminId(user.id);
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*, startup_profiles(*), mentor_profiles(*), investor_profiles(*), kyc_documents(*)")
+        .neq("role", "admin")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      if (data) setCandidates(data as Profile[]);
+    } catch (error: any) {
+      alert("❌ Erreur de chargement : " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startReview = async (candidate: Profile) => {
+    try {
+      setActionLoading(candidate.id);
+      const { error: updateError } = await supabase.from("profiles").update({ status: "under_review", reviewed_by: adminId, reviewed_at: new Date().toISOString() }).eq("id", candidate.id);
+      if (updateError) throw updateError;
+
+      await supabase.from("review_logs").insert([{ profile_id: candidate.id, admin_id: adminId, previous_status: candidate.status, new_status: "under_review", comment: "Prise en charge du dossier" }]);
+      setCandidates(candidates.map(c => c.id === candidate.id ? { ...c, status: "under_review" } : c));
+    } catch (error: any) {
+      alert("❌ Erreur : " + error.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDecision = async (id: string, newStatus: ValidStatus, name: string) => {
+    try {
+      setActionLoading(id);
+      const { error } = await supabase.from("profiles").update({ status: newStatus }).eq("id", id);
+      if (error) throw error;
+      setCandidates(candidates.map(c => c.id === id ? { ...c, status: newStatus } : c));
+    } catch (error: any) {
+      alert("❌ Erreur : " + error.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const openDecisionModal = (candidate: Profile, type: ValidStatus) => {
+    setSelectedCandidate(candidate);
+    setDecisionType(type);
+    setRejectionReason(candidate.rejection_reason || "");
+    setInternalComment("");
+    setModalOpen(true);
+  };
+
+  const handleDecisionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCandidate || !decisionType || !adminId) return;
+
+    try {
+      setActionLoading(selectedCandidate.id);
+      const updateData: any = { status: decisionType, reviewed_by: adminId, reviewed_at: new Date().toISOString(), rejection_reason: decisionType === 'rejected' ? rejectionReason : null };
+      
+      const { error: updateError } = await supabase.from("profiles").update(updateData).eq("id", selectedCandidate.id);
+      if (updateError) throw updateError;
+
+      await supabase.from("review_logs").insert([{ profile_id: selectedCandidate.id, admin_id: adminId, previous_status: selectedCandidate.status, new_status: decisionType, comment: internalComment || `Passage au statut ${decisionType}` }]);
+      setCandidates(candidates.map(c => c.id === selectedCandidate.id ? { ...c, ...updateData } : c));
+      setModalOpen(false);
+    } catch (error: any) {
+      alert("❌ Erreur : " + error.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // NOUVEAU : LA VRAIE FONCTION DE TÉLÉCHARGEMENT SECURISE
+  const handleDownloadDoc = async (filePath: string) => {
+    if (!filePath) return;
+    try {
+      // Demande une URL signée valable 60 secondes à Supabase
+      const { data, error } = await supabase.storage.from('kyc_files').createSignedUrl(filePath, 60);
+      if (error) throw error;
+      
+      if (data?.signedUrl) {
+        // Ouvre le PDF téléchargé dans un nouvel onglet
+        window.open(data.signedUrl, '_blank');
+      }
+    } catch (error: any) {
+      alert("❌ Erreur d'accès au document : " + error.message);
+    }
+  };
+
+  const getDetails = (c: Profile) => {
+    let d = c.role === 'startup' ? c.startup_profiles : c.role === 'mentor' ? c.mentor_profiles : c.investor_profiles;
+    if (Array.isArray(d)) return d[0] || {}; 
+    return d || {}; 
+  };
+
+  const filteredCandidates = candidates.filter(c => {
+    const details = getDetails(c);
+    const companyName = c.company || details.startup_name || details.fund_name || "";
+    return c.status === activeTab && (
+      c.full_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      companyName.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  });
+
+  return (
+    <div className="max-w-7xl mx-auto pb-12">
+      <div className="mb-8">
+        <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">Modération & Rôles</p>
+        <h2 className="text-2xl font-medium text-[#101D42]">Utilisateurs & Matching</h2>
+      </div>
+
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 border-b border-gray-200 pb-4">
+        <div className="flex gap-4 text-sm font-medium overflow-x-auto w-full md:w-auto hide-scrollbar">
+          {[
+            { id: "pending", label: "Nouveaux" }, { id: "under_review", label: "En Examen" },
+            { id: "approved", label: "Approuvés" }, { id: "rejected", label: "Refusés" }, { id: "suspended", label: "Suspendus" }
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as ValidStatus)} className={`pb-2 px-1 whitespace-nowrap transition-colors relative ${activeTab === tab.id ? "text-[#101D42] border-b-2 border-[#101D42] font-bold" : "text-[#9CA3AF] hover:text-[#101D42]"}`}>
+              {tab.label} <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full ml-1">{candidates.filter(c => c.status === tab.id).length}</span>
+            </button>
+          ))}
+        </div>
+        <div className="relative w-full md:w-64">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input type="text" placeholder="Rechercher..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-full text-sm focus:outline-none focus:border-[#2563EB]" />
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-20 text-[#2563EB]"><Loader2 className="animate-spin" size={32} /></div>
+      ) : filteredCandidates.length === 0 ? (
+        <div className="bg-white rounded-3xl border border-gray-200 p-16 text-center text-[#9CA3AF] shadow-sm"><CheckCircle2 size={48} className="mx-auto mb-4 text-gray-300" /><p className="text-lg font-medium text-[#101D42]">Aucun dossier ici.</p></div>
+      ) : (
+        <div className="space-y-6">
+          {filteredCandidates.map((candidate) => {
+            const details = getDetails(candidate);
+            const displayCompany = candidate.company || details.startup_name || details.fund_name || "Organisation non spécifiée";
+
+            return (
+              <div key={candidate.id} className="bg-white rounded-[24px] border border-gray-200 shadow-sm flex flex-col transition-all hover:border-[#2563EB]/30 overflow-hidden">
+                
+                <div className="p-6 lg:p-8 flex flex-col lg:flex-row gap-8">
+                  
+                  {/* Infos principales */}
+                  <div className="flex-1 space-y-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className={`text-[10px] font-bold tracking-[0.1em] uppercase px-3 py-1 rounded-full ${candidate.role === 'startup' ? 'bg-blue-50 text-[#2563EB]' : candidate.role === 'mentor' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
+                        {candidate.role}
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                        {new Date(candidate.created_at).toLocaleDateString('fr-FR')}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h3 className="text-xl font-medium text-[#101D42]">{candidate.full_name}</h3>
+                      <p className="text-sm text-[#9CA3AF] font-medium flex items-center gap-2 mt-1">
+                        {displayCompany}
+                        {candidate.phone && <><span className="w-1 h-1 bg-gray-300 rounded-full"></span> <Phone size={12} /> {candidate.phone}</>}
+                      </p>
+                    </div>
+
+                    <div className="bg-[#F8FAFC] p-5 rounded-2xl text-sm space-y-3 text-gray-600 border border-gray-100 min-h-[80px]">
+                      {(!details || Object.keys(details).length === 0) ? (
+                        <p className="text-xs text-gray-400 italic flex items-center gap-2 h-full">
+                          <AlertTriangle size={14} className="text-orange-400" /> Ce candidat n'a pas encore complété son dossier.
+                        </p>
+                      ) : (
+                        <>
+                          {details.description && candidate.role === 'startup' && <p className="italic text-[#101D42]">"{details.description}"</p>}
+                          {details.sector && candidate.role === 'startup' && <p><strong>Secteur :</strong> {details.sector}</p>}
+                          
+                          {details.expertise_domain && <p><strong>Expertise :</strong> {details.expertise_domain}</p>}
+                          {details.years_experience !== undefined && <p><strong>Expérience :</strong> {details.years_experience} ans</p>}
+                          {details.bio && <p className="italic">"{details.bio}"</p>}
+                          {details.availability && <p><strong>Disponibilité :</strong> {details.availability}</p>}
+                          
+                          {details.target_sectors && <p><strong>Cibles :</strong> {details.target_sectors}</p>}
+                          {details.ticket_size && <p><strong>Ticket cible :</strong> {details.ticket_size}</p>}
+                          {details.investment_thesis && <p className="italic">"{details.investment_thesis}"</p>}
+                          
+                          {details.linkedin_url && (
+                            <a href={details.linkedin_url.startsWith('http') ? details.linkedin_url : `https://${details.linkedin_url}`} target="_blank" rel="noreferrer" className="text-[#2563EB] inline-flex items-center gap-1.5 hover:underline font-medium mt-2">
+                              <ExternalLink size={14} /> Profil LinkedIn
+                            </a>
+                          )}
+                          {details.website && (
+                            <a href={details.website.startsWith('http') ? details.website : `https://${details.website}`} target="_blank" rel="noreferrer" className="text-[#101D42] inline-flex items-center gap-1.5 hover:underline font-medium mt-2 ml-4">
+                              <Globe size={14} /> Site Web
+                            </a>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* DOCUMENTS JOINTS */}
+                  <div className="lg:w-1/3 flex flex-col space-y-4 border-t lg:border-t-0 lg:border-l border-gray-100 pt-6 lg:pt-0 lg:pl-8">
+                    <h4 className="text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase flex items-center gap-2">
+                      <FolderOpen size={16} className="text-[#9CA3AF]" /> Pièces jointes
+                    </h4>
+                    
+                    <div className="space-y-2">
+                      {/* BOUTON CORRIGÉ POUR LE PITCH DECK DE STARTUP */}
+                      {candidate.role === 'startup' && details?.pitch_deck_path && (
+                        <button onClick={() => handleDownloadDoc(details.pitch_deck_path)} className="w-full flex items-center justify-between bg-white border border-gray-200 hover:border-[#2563EB] p-3 rounded-xl transition-colors group text-left">
+                          <div className="flex items-center gap-3 overflow-hidden">
+                            <div className="p-2 bg-blue-50 text-[#2563EB] rounded-lg shrink-0"><FileText size={16} /></div>
+                            <span className="text-xs font-medium text-[#101D42] truncate">Pitch Deck</span>
+                          </div>
+                          <Download size={14} className="text-gray-400 group-hover:text-[#2563EB] shrink-0" />
+                        </button>
+                      )}
+
+                      {/* BOUTON CORRIGÉ POUR LES AUTRES DOCUMENTS (Mentor/Investor) */}
+                      {candidate.kyc_documents && candidate.kyc_documents.length > 0 ? (
+                        candidate.kyc_documents.map((doc: any, i: number) => (
+                          <button key={i} onClick={() => handleDownloadDoc(doc.storage_path)} className="w-full flex items-center justify-between bg-white border border-gray-200 hover:border-[#2563EB] p-3 rounded-xl transition-colors group text-left">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <div className="p-2 bg-gray-50 text-gray-500 rounded-lg shrink-0"><FileText size={16} /></div>
+                              <span className="text-xs font-medium text-[#101D42] truncate">{doc.file_name}</span>
+                            </div>
+                            <Download size={14} className="text-gray-400 group-hover:text-[#2563EB] shrink-0" />
+                          </button>
+                        ))
+                      ) : (
+                        candidate.role !== 'startup' && <p className="text-xs text-gray-400 italic">Aucun document fourni.</p>
+                      )}
+                      
+                      {candidate.role === 'startup' && !details?.pitch_deck_path && (
+                        <p className="text-xs text-gray-400 italic">Aucun Pitch Deck fourni.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* BOUTONS D'ACTION */}
+                <div className="bg-[#F8FAFC] border-t border-gray-100 p-4 lg:px-8 flex justify-end gap-3">
+                  {candidate.status === "pending" && (
+                    <button onClick={() => startReview(candidate)} disabled={actionLoading === candidate.id} className="flex items-center justify-center gap-2 bg-[#101D42] hover:bg-[#1a2b5e] text-white px-6 py-2.5 rounded-full text-xs font-bold transition-all disabled:opacity-50">
+                      {actionLoading === candidate.id ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />} PRENDRE EN CHARGE
+                    </button>
+                  )}
+
+                  {candidate.status === "under_review" && (
+                    <>
+                      <button onClick={() => openDecisionModal(candidate, "rejected")} className="flex items-center justify-center gap-2 bg-white hover:bg-red-50 text-red-600 px-6 py-2.5 rounded-full text-xs font-bold transition-all border border-red-200">
+                        <XCircle size={16} /> REFUSER
+                      </button>
+                      <button onClick={() => openDecisionModal(candidate, "approved")} className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-full text-xs font-bold transition-all shadow-sm">
+                        <CheckCircle2 size={16} /> APPROUVER LE DOSSIER
+                      </button>
+                    </>
+                  )}
+
+                  {candidate.status === "approved" && (
+                    <button onClick={() => openDecisionModal(candidate, "suspended")} className="flex items-center justify-center gap-2 bg-white hover:bg-gray-100 text-gray-600 px-6 py-2.5 rounded-full text-xs font-bold transition-all border border-gray-200">
+                      <PauseCircle size={16} /> SUSPENDRE L'ACCÈS
+                    </button>
+                  )}
+
+                  {(candidate.status === "rejected" || candidate.status === "suspended") && (
+                    <button onClick={() => handleDecision(candidate.id, "under_review", candidate.full_name)} className="flex items-center justify-center gap-2 bg-white hover:bg-blue-50 text-[#2563EB] px-6 py-2.5 rounded-full text-xs font-bold transition-all border border-blue-200">
+                      <AlertTriangle size={16} /> RÉEXAMINER
+                    </button>
+                  )}
+                </div>
+
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* MODALE DE DÉCISION */}
+      {modalOpen && selectedCandidate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#101D42]/40 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-lg rounded-[32px] overflow-hidden shadow-2xl">
+            <div className={`p-6 border-b border-gray-100 flex items-center gap-4 ${decisionType === 'approved' ? 'bg-emerald-50 text-emerald-700' : decisionType === 'rejected' ? 'bg-red-50 text-red-700' : 'bg-orange-50 text-orange-700'}`}>
+              {decisionType === 'approved' ? <CheckCircle2 size={24} /> : decisionType === 'rejected' ? <XCircle size={24} /> : <AlertTriangle size={24} />}
+              <div>
+                <h3 className="text-lg font-bold">Confirmer l'action</h3>
+                <p className="text-xs opacity-80">Dossier de {selectedCandidate.full_name}</p>
+              </div>
+            </div>
+            <form onSubmit={handleDecisionSubmit} className="p-8 space-y-6">
+              {decisionType === 'rejected' && (
+                <div>
+                  <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Motif du refus <span className="text-red-500">*</span></label>
+                  <textarea required rows={3} value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-red-500 text-sm text-[#101D42] resize-none" placeholder="Ce message sera visible par le candidat." />
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-2">Commentaire interne (Optionnel)</label>
+                <input type="text" value={internalComment} onChange={(e) => setInternalComment(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" placeholder="Note privée pour l'équipe..." />
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => setModalOpen(false)} className="flex-1 py-3.5 rounded-full font-semibold text-gray-500 hover:bg-gray-100 transition-colors text-sm">ANNULER</button>
+                <button type="submit" disabled={actionLoading === selectedCandidate.id} className={`flex-1 py-3.5 rounded-full font-semibold text-white transition-colors text-sm flex items-center justify-center gap-2 ${decisionType === 'approved' ? 'bg-emerald-600 hover:bg-emerald-700' : decisionType === 'rejected' ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-600 hover:bg-orange-700'}`}>
+                  {actionLoading === selectedCandidate.id ? <Loader2 size={16} className="animate-spin" /> : "CONFIRMER"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,1685 @@
+
+
+===== FILE: app\(dashboard)\dashboard\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { Loader2, Rocket, Briefcase, TrendingUp, Users, Calendar, ArrowRight, Target, CheckCircle2 } from "lucide-react";
+import Link from "next/link";
+
+export default function DashboardPage() {
+  const [role, setRole] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  
+  // États pour stocker les vraies données
+  const [startupStats, setStartupStats] = useState({ progress: 0, completedTasks: 0, totalTasks: 0 });
+  const [networkStats, setNetworkStats] = useState({ activeStartups: 0, totalEvents: 0 });
+  const [dealFlow, setDealFlow] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // 1. Quel est mon rôle ?
+        const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+        if (!profile) return;
+        setRole(profile.role);
+
+        // 2. Récupérer les données selon le rôle
+        if (profile.role === 'startup') {
+          // Calcul de la VRAIE progression basée sur les tâches
+          const { data: tasks } = await supabase.from('tasks').select('status').eq('user_id', user.id);
+          if (tasks && tasks.length > 0) {
+            const completed = tasks.filter(t => t.status === 'done').length;
+            const progressPercent = Math.round((completed / tasks.length) * 100);
+            setStartupStats({ progress: progressPercent, completedTasks: completed, totalTasks: tasks.length });
+          }
+        } 
+        else if (profile.role === 'mentor') {
+          // Compter les vraies startups actives
+          const { count: startupCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'startup').eq('status', 'approved');
+          const { count: eventCount } = await supabase.from('events').select('*', { count: 'exact', head: true });
+          setNetworkStats({ activeStartups: startupCount || 0, totalEvents: eventCount || 0 });
+        }
+        else if (profile.role === 'investor') {
+          // Afficher les 3 dernières startups du Deal Flow
+          const { data: startups } = await supabase
+            .from('profiles')
+            .select('id, full_name, startup_profiles(sector, startup_name)')
+            .eq('role', 'startup')
+            .eq('status', 'approved')
+            .order('created_at', { ascending: false })
+            .limit(3);
+          
+          if (startups) setDealFlow(startups);
+        }
+
+      } catch (error) {
+        console.error("Erreur Dashboard:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  if (loading) {
+    return <div className="h-[50vh] flex items-center justify-center text-[#2563EB]"><Loader2 className="animate-spin" size={40} /></div>;
+  }
+
+  // ==========================================
+  // VUE : STARTUP
+  // ==========================================
+  if (role === "startup") {
+    return (
+      <div className="max-w-5xl mx-auto pb-12">
+        <div className="mb-10">
+          <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">Vue d'ensemble</p>
+          <h2 className="text-2xl font-medium text-[#101D42]">Ma Progression</h2>
+        </div>
+        
+        <div className="bg-white rounded-[32px] border border-gray-200 p-10 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-[#2563EB] opacity-5 rounded-full blur-[80px]"></div>
+          
+          <div className="flex items-center gap-4 mb-6 relative z-10">
+            <div className="w-14 h-14 bg-blue-50 text-[#2563EB] rounded-2xl flex items-center justify-center shadow-inner">
+              <Rocket size={24} />
+            </div>
+            <div>
+              <h3 className="text-xl font-medium text-[#101D42]">Bienvenue dans votre espace d'accélération.</h3>
+              <p className="text-[#9CA3AF] text-sm">Utilisez le menu pour suivre vos objectifs et contacter vos mentors.</p>
+            </div>
+          </div>
+
+          <div className="bg-[#FAFAFA] p-6 rounded-2xl border border-gray-100 relative z-10">
+            <div className="flex justify-between items-end mb-3">
+              <div className="flex items-center gap-2 text-[#101D42] font-medium text-sm">
+                <Target size={18} className="text-[#2563EB]" /> Feuille de route
+              </div>
+              <p className="text-2xl font-bold text-[#101D42]">{startupStats.progress}%</p>
+            </div>
+            <div className="h-3 w-full bg-gray-200 rounded-full overflow-hidden mb-3">
+              <div className="h-full bg-[#2563EB] transition-all duration-1000" style={{ width: `${startupStats.progress}%` }}></div>
+            </div>
+            <p className="text-xs font-bold text-[#9CA3AF] uppercase tracking-wider">
+              {startupStats.completedTasks} tâches terminées sur {startupStats.totalTasks}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VUE : MENTOR
+  // ==========================================
+  if (role === "mentor") {
+    return (
+      <div className="max-w-6xl mx-auto pb-12">
+        <div className="mb-10">
+          <p className="text-[10px] font-bold tracking-[0.15em] text-emerald-600 uppercase mb-2">Espace Expert</p>
+          <h2 className="text-2xl font-medium text-[#101D42]">Bienvenue, Mentor.</h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="bg-[#101D42] text-white p-8 rounded-[32px] shadow-sm relative overflow-hidden group">
+            <div className="absolute top-[-20%] right-[-10%] w-40 h-40 bg-[#2563EB] opacity-20 blur-[40px] group-hover:opacity-40 transition-opacity"></div>
+            <Briefcase size={28} className="mb-6 text-[#2563EB]" />
+            <p className="text-xs font-bold tracking-widest text-gray-400 uppercase mb-2">Startups dans l'incubateur</p>
+            <h3 className="text-5xl font-serif">{networkStats.activeStartups}</h3>
+          </div>
+          
+          <div className="bg-white border border-gray-200 p-8 rounded-[32px] shadow-sm hover:border-emerald-500/30 transition-colors">
+            <Calendar size={28} className="mb-6 text-emerald-500" />
+            <p className="text-xs font-bold tracking-widest text-[#9CA3AF] uppercase mb-2">Événements programmés</p>
+            <h3 className="text-5xl font-serif text-[#101D42]">{networkStats.totalEvents}</h3>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VUE : INVESTISSEUR
+  // ==========================================
+  if (role === "investor") {
+    return (
+      <div className="max-w-6xl mx-auto pb-12">
+        <div className="mb-10 flex justify-between items-end">
+          <div>
+            <p className="text-[10px] font-bold tracking-[0.15em] text-orange-600 uppercase mb-2">Sourcing & Opportunités</p>
+            <h2 className="text-2xl font-medium text-[#101D42]">Deal Flow Récent</h2>
+          </div>
+          <Link href="/reseau" className="text-[10px] font-bold text-[#2563EB] uppercase hover:underline">Voir tout l'annuaire</Link>
+        </div>
+
+        {dealFlow.length === 0 ? (
+          <div className="bg-white p-12 rounded-[32px] border border-gray-200 text-center shadow-sm">
+            <TrendingUp size={40} className="mx-auto text-gray-300 mb-4" />
+            <p className="text-[#9CA3AF] font-medium">Aucune nouvelle startup n'a été approuvée récemment.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {dealFlow.map((startup, i) => {
+              const details = startup.startup_profiles?.[0] || {};
+              const sName = details.startup_name || startup.full_name;
+              const sSector = details.sector || "Non spécifié";
+              
+              return (
+                <div key={i} className="bg-white rounded-[24px] border border-gray-200 p-6 shadow-sm hover:border-[#2563EB]/40 transition-colors flex flex-col justify-between">
+                  <div>
+                    <div className="w-12 h-12 rounded-xl bg-[#F8FAFC] border border-gray-100 flex items-center justify-center text-xl font-serif text-[#101D42] mb-4">
+                      {sName.charAt(0)}
+                    </div>
+                    <h4 className="text-lg font-medium text-[#101D42] mb-1 truncate">{sName}</h4>
+                    <span className="text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase bg-gray-50 px-2 py-1 rounded">
+                      {sSector}
+                    </span>
+                  </div>
+                  <Link href="/reseau" className="mt-6 w-full flex items-center justify-center gap-2 bg-[#F8FAFC] hover:bg-[#EFF6FF] text-[#2563EB] py-3 rounded-full text-xs font-bold transition-colors">
+                    VOIR LE PROFIL <ArrowRight size={14} />
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+
+===== FILE: app\(dashboard)\demoday\page.tsx =====
+"use client";
+
+import { Presentation, Calendar, Video, Download } from "lucide-react";
+
+export default function DemoDayPage() {
+  return (
+    <div className="max-w-5xl mx-auto">
+      <div className="mb-10">
+        <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">Événement Exclusif</p>
+        <h2 className="text-2xl font-medium text-[#101D42]">Le Grand Demo Day</h2>
+      </div>
+
+      <div className="bg-[#101D42] rounded-[32px] p-10 text-white relative overflow-hidden shadow-xl">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/3 blur-2xl"></div>
+        
+        <div className="relative z-10 flex flex-col md:flex-row gap-10 items-center justify-between">
+          <div>
+            <span className="inline-block bg-[#2563EB] text-white text-[10px] font-bold tracking-widest px-3 py-1 rounded-full uppercase mb-6">Bientôt</span>
+            <h3 className="text-3xl md:text-5xl font-serif leading-tight mb-4">Batch Hiver 2026</h3>
+            <p className="text-gray-400 mb-8 max-w-md">Découvrez les 10 startups les plus prometteuses de notre programme d'accélération qui pitchent en direct pour lever leur Seed.</p>
+            
+            <div className="flex gap-4">
+              <button className="bg-white text-[#101D42] px-6 py-3.5 rounded-full text-xs font-bold tracking-wide flex items-center gap-2 hover:bg-gray-100 transition-colors">
+                <Video size={16} /> REJOINDRE LE LIVE
+              </button>
+              <button className="bg-transparent border border-gray-600 text-white px-6 py-3.5 rounded-full text-xs font-bold tracking-wide flex items-center gap-2 hover:border-gray-400 transition-colors">
+                <Download size={16} /> LIVRET DES STARTUPS
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-md border border-white/20 p-8 rounded-3xl text-center shrink-0">
+            <Calendar size={32} className="mx-auto mb-4 text-[#2563EB]" />
+            <p className="text-sm font-bold text-gray-300 uppercase tracking-widest mb-1">Mardi 15 Janvier</p>
+            <p className="text-3xl font-serif mb-2">18:00 <span className="text-sm">GMT</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\docs\page.tsx =====
+"use client";
+
+import { useState } from "react";
+import { FileText, Download, Upload, MoreVertical, Loader2, FileCheck2, Trash2 } from "lucide-react";
+
+// Fausses données pour le prototype
+const INITIAL_DOCS = [
+  { id: 1, name: "Pitch_Deck_GreenTech_V3.pdf", size: "4.2 MB", date: "Aujourd'hui, 10:30", type: "pdf", uploader: "Alexandre" },
+  { id: 2, name: "Previsionnel_Financier_2024.xlsx", size: "1.1 MB", date: "12 Octobre", type: "excel", uploader: "Sarah (Mentor)" },
+  { id: 3, name: "Kbis_A_Jour.pdf", size: "0.8 MB", date: "05 Octobre", type: "pdf", uploader: "Alexandre" },
+];
+
+export default function DocsPage() {
+  const [docs, setDocs] = useState(INITIAL_DOCS);
+  const [isUploading, setIsUploading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+
+  // Fonction pour simuler l'import d'un document
+  const handleUpload = async () => {
+    try {
+      setIsUploading(true);
+      
+      // Simulation d'un upload de 2 secondes
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const newDoc = {
+        id: Date.now(),
+        name: "Nouveau_Document_Signe.pdf",
+        size: "2.5 MB",
+        date: "À l'instant",
+        type: "pdf",
+        uploader: "Alexandre"
+      };
+      
+      setDocs([newDoc, ...docs]);
+      alert("✅ Document importé avec succès dans votre espace sécurisé.");
+    } catch (error: any) {
+      alert("❌ Erreur lors de l'import : " + error.message);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Fonction pour simuler le téléchargement
+  const handleDownload = async (id: number, name: string) => {
+    try {
+      setDownloadingId(id);
+      
+      // Simulation temps de téléchargement
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      alert(`✅ Téléchargement de "${name}" terminé !`);
+    } catch (error: any) {
+      alert("❌ Échec du téléchargement : " + error.message);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handleDelete = (id: number) => {
+    if (confirm("Êtes-vous sûr de vouloir supprimer ce document ?")) {
+      setDocs(docs.filter(d => d.id !== id));
+    }
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto h-full flex flex-col">
+      
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">Espace sécurisé</p>
+          <h2 className="text-2xl font-medium text-[#101D42]">Documents & Data Room</h2>
+        </div>
+        
+        <button 
+          onClick={handleUpload}
+          disabled={isUploading}
+          className="flex items-center gap-2 bg-[#101D42] hover:bg-[#1a2b5e] text-white px-6 py-3 rounded-full text-xs font-semibold tracking-wide transition-all shadow-sm disabled:opacity-70"
+        >
+          {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+          {isUploading ? "IMPORTATION..." : "IMPORTER UN FICHIER"}
+        </button>
+      </div>
+
+      <div className="bg-white rounded-[24px] border border-gray-200 shadow-sm flex-1 overflow-hidden flex flex-col">
+        {/* En-tête du tableau (Léger et discret) */}
+        <div className="grid grid-cols-12 gap-4 p-6 border-b border-gray-100 bg-[#FAFAFA] text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase">
+          <div className="col-span-6 md:col-span-5">Nom du fichier</div>
+          <div className="col-span-3 hidden md:block">Ajouté par</div>
+          <div className="col-span-4 md:col-span-3">Date d'ajout</div>
+          <div className="col-span-2 md:col-span-1 text-right">Taille</div>
+        </div>
+
+        {/* Liste des fichiers */}
+        <div className="flex-1 overflow-y-auto p-2">
+          {docs.length === 0 ? (
+            <div className="text-center py-20">
+              <FileCheck2 size={48} className="mx-auto text-gray-200 mb-4" />
+              <p className="text-[#9CA3AF] font-medium">Votre espace documentaire est vide.</p>
+            </div>
+          ) : (
+            docs.map((doc) => (
+              <div key={doc.id} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-[#F8FAFC] rounded-2xl transition-colors group border-b border-gray-50 last:border-0">
+                
+                {/* Icône et Nom */}
+                <div className="col-span-6 md:col-span-5 flex items-center gap-4">
+                  <div className="w-10 h-10 bg-[#EFF6FF] text-[#2563EB] rounded-xl flex items-center justify-center shrink-0">
+                    <FileText size={18} />
+                  </div>
+                  <p className="text-sm font-medium text-[#101D42] truncate pr-4">{doc.name}</p>
+                </div>
+
+                {/* Auteur (Caché sur mobile) */}
+                <div className="col-span-3 hidden md:flex items-center">
+                  <span className="text-xs text-gray-500 bg-white border border-gray-200 px-3 py-1 rounded-md">
+                    {doc.uploader}
+                  </span>
+                </div>
+
+                {/* Date */}
+                <div className="col-span-4 md:col-span-3 flex items-center">
+                  <span className="text-xs text-[#9CA3AF] font-medium">{doc.date}</span>
+                </div>
+
+                {/* Actions (Télécharger / Supprimer) */}
+                <div className="col-span-2 md:col-span-1 flex items-center justify-end gap-2">
+                  <p className="text-xs text-gray-400 font-medium hidden md:block mr-2">{doc.size}</p>
+                  
+                  <button 
+                    onClick={() => handleDownload(doc.id, doc.name)}
+                    disabled={downloadingId === doc.id}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-gray-200 text-[#101D42] hover:text-[#2563EB] hover:border-[#2563EB] transition-colors disabled:opacity-50"
+                  >
+                    {downloadingId === doc.id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                  </button>
+                  
+                  <button 
+                    onClick={() => handleDelete(doc.id)}
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-white border border-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-red-500 hover:border-red-200 transition-all"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\favoris\page.tsx =====
+"use client";
+
+import { Star, TrendingUp } from "lucide-react";
+
+export default function FavorisPage() {
+  return (
+    <div className="max-w-5xl mx-auto">
+      <div className="mb-10">
+        <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">Watchlist</p>
+        <h2 className="text-2xl font-medium text-[#101D42]">Startups en Favoris</h2>
+      </div>
+
+      <div className="bg-white rounded-[24px] border border-gray-200 p-16 text-center shadow-sm">
+        <Star size={48} className="mx-auto text-[#2563EB] mb-4 fill-[#EFF6FF]" />
+        <h3 className="text-lg font-medium text-[#101D42] mb-2">Votre liste est vide</h3>
+        <p className="text-[#9CA3AF] text-sm mb-6">Parcourez le Deal Flow pour ajouter des startups à surveiller.</p>
+        <button className="bg-[#101D42] text-white px-6 py-3 rounded-full text-xs font-bold tracking-wide flex items-center gap-2 mx-auto">
+          <TrendingUp size={16} /> EXPLORER LE DEAL FLOW
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\formations\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { PlayCircle, Clock, Loader2, BookOpen, X, Check, Lock, Unlock, Award } from "lucide-react";
+
+export default function FormationsPage() {
+  const [courses, setCourses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  
+  // NOUVEAU STATE : Gère le cours actuellement sélectionné pour ouvrir la fenêtre (Modal)
+  const [selectedCourse, setSelectedCourse] = useState<any | null>(null);
+
+  useEffect(() => {
+    fetchCourses();
+  }, []);
+
+  const fetchCourses = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase.from("courses").select("*");
+      if (error) throw error;
+      if (data) setCourses(data);
+    } catch (error: any) {
+      alert("❌ Impossible de charger les formations : " + error.message);
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEnroll = async (courseId: string, courseTitle: string, isPremium: boolean, price: number) => {
+    try {
+      setActionLoading(courseId);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Vous devez être connecté.");
+
+      await new Promise(resolve => setTimeout(resolve, 800)); // Simulation de chargement
+
+      if (isPremium) {
+        alert(`💳 Redirection vers la passerelle de paiement pour régler ${price}€ pour "${courseTitle}".`);
+      } else {
+        alert(`✅ Succès ! Vous êtes maintenant inscrit au cours "${courseTitle}".`);
+        setSelectedCourse(null); // On ferme la fenêtre après l'inscription
+      }
+    } catch (error: any) {
+      alert("❌ Erreur : " + error.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto">
+      
+      {/* HEADER DE LA PAGE */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">E-Learning</p>
+          <h2 className="text-2xl font-medium text-[#101D42]">Catalogue de Formations</h2>
+        </div>
+      </div>
+
+      {/* SYSTÈME D'ONGLETS (Comme dans l'ancien design) */}
+      <div className="flex gap-6 mb-8 border-b border-gray-100 pb-2">
+        <button className="text-[#101D42] border-b-2 border-[#101D42] pb-2 text-sm font-medium">Toutes les formations</button>
+        <button className="text-[#9CA3AF] hover:text-[#101D42] pb-2 text-sm font-medium transition-colors">En cours (0)</button>
+        <button className="text-[#9CA3AF] hover:text-[#101D42] pb-2 text-sm font-medium transition-colors">Premium</button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center items-center py-20 text-[#9CA3AF]">
+          <Loader2 className="animate-spin" size={32} />
+        </div>
+      ) : courses.length === 0 ? (
+        <div className="text-center py-16 border-2 border-dashed border-gray-100 rounded-2xl bg-white">
+          <BookOpen size={48} className="mx-auto text-gray-200 mb-4" />
+          <p className="text-[#9CA3AF] font-medium">Aucune formation disponible.</p>
+        </div>
+      ) : (
+        /* L'ANCIENNE GRILLE PARFAITE (2 Colonnes) */
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {courses.map((course) => (
+            <div 
+              key={course.id} 
+              onClick={() => setSelectedCourse(course)} // Ouvre la fenêtre au clic
+              className="bg-white rounded-[24px] border border-gray-200 p-8 shadow-sm group hover:border-[#2563EB]/40 transition-all cursor-pointer flex flex-col justify-between h-[280px]"
+            >
+              <div>
+                <div className="flex justify-between items-start mb-6">
+                  <span className="text-[10px] font-bold tracking-[0.15em] text-[#2563EB] bg-[#EFF6FF] px-3 py-1 rounded-full uppercase">
+                    {course.category}
+                  </span>
+                  {course.is_premium ? (
+                    <Lock size={18} className="text-orange-400" />
+                  ) : (
+                    <Unlock size={18} className="text-emerald-400" />
+                  )}
+                </div>
+                
+                <h3 className="text-xl font-medium text-[#101D42] mb-3 leading-tight group-hover:text-[#2563EB] transition-colors">{course.title}</h3>
+                
+                <div className="flex items-center gap-4 text-xs text-[#9CA3AF] mb-8 font-medium">
+                  <span className="flex items-center gap-1.5"><Clock size={14} /> {course.duration}</span>
+                  <span>•</span>
+                  <span>{course.level}</span>
+                </div>
+              </div>
+
+              {/* Barre de progression (0% par défaut) */}
+              <div>
+                <div className="flex justify-between text-xs mb-2 font-medium">
+                  <span className="text-[#9CA3AF]">Non commencé</span>
+                  <span className="text-[#101D42]">0%</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-1.5">
+                  <div className="bg-[#101D42] h-1.5 rounded-full" style={{ width: `0%` }}></div>
+                </div>
+              </div>
+
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* FENÊTRE MODALE (POP-UP) - DÉTAILS DE LA FORMATION           */}
+      {/* ========================================================= */}
+      {selectedCourse && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#101D42]/20 backdrop-blur-sm">
+          
+          {/* Conteneur de la fenêtre */}
+          <div className="bg-white w-full max-w-2xl max-h-[90vh] rounded-[32px] shadow-2xl overflow-hidden flex flex-col relative animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Bouton Fermer */}
+            <button 
+              onClick={() => setSelectedCourse(null)}
+              className="absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors z-10"
+            >
+              <X size={18} />
+            </button>
+
+            {/* En-tête du Modal */}
+            <div className="p-8 border-b border-gray-100 bg-[#FAFAFA]">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-[10px] font-bold tracking-[0.15em] text-[#2563EB] bg-[#EFF6FF] px-3 py-1 rounded-full uppercase">
+                  {selectedCourse.category}
+                </span>
+                {selectedCourse.is_premium && (
+                  <span className="text-[10px] font-bold tracking-[0.15em] text-orange-600 bg-orange-50 px-3 py-1 rounded-full uppercase">
+                    Premium
+                  </span>
+                )}
+              </div>
+              <h2 className="text-3xl font-medium text-[#101D42] mb-2 leading-tight pr-10">{selectedCourse.title}</h2>
+              <p className="text-sm text-[#9CA3AF] font-medium">Formateur : {selectedCourse.instructor}</p>
+            </div>
+
+            {/* Corps du Modal (Défilable si trop long) */}
+            <div className="p-8 overflow-y-auto flex-1">
+              
+              <div className="mb-8">
+                <h4 className="text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-3">À propos de ce cours</h4>
+                <p className="text-sm text-gray-600 leading-relaxed">{selectedCourse.description}</p>
+              </div>
+
+              <div className="mb-8">
+                <h4 className="text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-4">Compétences acquises</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {selectedCourse.learning_outcomes?.map((outcome: string, idx: number) => (
+                    <div key={idx} className="flex items-start gap-3">
+                      <Check size={16} className="text-[#2563EB] shrink-0 mt-0.5" />
+                      <span className="text-sm text-gray-600">{outcome}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-xs font-bold tracking-[0.1em] text-[#101D42] uppercase mb-4">Programme détaillé</h4>
+                <div className="space-y-3">
+                  {selectedCourse.syllabus?.map((mod: any, idx: number) => (
+                    <div key={idx} className="flex justify-between items-center bg-white border border-gray-200 p-4 rounded-xl">
+                      <span className="text-sm font-medium text-[#101D42]">{mod.title}</span>
+                      <span className="text-xs font-bold text-[#9CA3AF] bg-[#F8FAFC] px-2 py-1 rounded-md">{mod.duration}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Pied du Modal (Bouton d'action Fixe en bas) */}
+            <div className="p-6 border-t border-gray-100 bg-white flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-1">Tarif</p>
+                <p className="text-2xl font-medium text-[#101D42]">
+                  {selectedCourse.is_premium ? `${selectedCourse.price} €` : "Inclus"}
+                </p>
+              </div>
+              
+              <button 
+                onClick={() => handleEnroll(selectedCourse.id, selectedCourse.title, selectedCourse.is_premium, selectedCourse.price)}
+                disabled={actionLoading === selectedCourse.id}
+                className={`flex items-center gap-2 px-8 py-3.5 rounded-full text-xs font-semibold tracking-[0.1em] transition-colors disabled:opacity-50 ${
+                  selectedCourse.is_premium 
+                    ? "bg-[#101D42] hover:bg-[#1a2b5e] text-white" 
+                    : "bg-[#2563EB] hover:bg-blue-700 text-white"
+                }`}
+              >
+                {actionLoading === selectedCourse.id ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : selectedCourse.is_premium ? (
+                  <><Lock size={16} /> DÉBLOQUER L'ACCÈS</>
+                ) : (
+                  <><PlayCircle size={16} /> COMMENCER</>
+                )}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\layout.tsx =====
+import Navigation from "@/components/Navigation";
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-white flex text-[#101D42]">
+      {/* La Sidebar fixe (qui gère déjà le PC et le Mobile) */}
+      <Navigation />
+      
+      {/* Le conteneur principal qui affichera les pages */}
+      <div className="ml-[260px] flex-1 flex flex-col min-h-screen bg-[#FAFAFA]">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\mes-startups\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { Briefcase, Calendar, MessageCircle, FileText, Rocket, Target, ChevronRight, Loader2, Users } from "lucide-react";
+import Link from "next/link";
+
+type StartupProfile = {
+  id: string;
+  full_name: string; // Nom du fondateur
+  startup_profiles?: {
+    startup_name: string;
+    sector: string;
+    description: string;
+    pitch_deck_path: string | null;
+  }[];
+};
+
+export default function MesStartupsPage() {
+  const [startups, setStartups] = useState<StartupProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchStartups();
+  }, []);
+
+  const fetchStartups = async () => {
+    try {
+      setLoading(true);
+      // On va chercher toutes les Startups qui ont été validées (approved) par l'Admin
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(`
+          id, 
+          full_name, 
+          startup_profiles (startup_name, sector, description, pitch_deck_path)
+        `)
+        .eq("role", "startup")
+        .eq("status", "approved")
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      if (data) setStartups(data);
+    } catch (error: any) {
+      alert("❌ Erreur de chargement des startups : " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // VRAIE FONCTION DE TÉLÉCHARGEMENT SÉCURISÉ DU PITCH DECK
+  const handleDownloadDeck = async (startupId: string, filePath: string | null | undefined) => {
+    if (!filePath) {
+      alert("⚠️ Cette startup n'a pas encore mis en ligne son Pitch Deck.");
+      return;
+    }
+    
+    try {
+      setDownloadingId(startupId);
+      const { data, error } = await supabase.storage.from('kyc_files').createSignedUrl(filePath, 60);
+      if (error) throw error;
+      
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+      }
+    } catch (error: any) {
+      alert("❌ Erreur d'accès au document : " + error.message);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex justify-center items-center h-[50vh]"><Loader2 className="animate-spin text-emerald-500" size={40} /></div>;
+  }
+
+  return (
+    <div className="max-w-6xl mx-auto pb-12">
+      
+      {/* HEADER MENTOR */}
+      <div className="mb-10">
+        <p className="text-[10px] font-bold tracking-[0.15em] text-emerald-600 uppercase mb-2">Suivi d'accompagnement</p>
+        <h2 className="text-2xl font-medium text-[#101D42]">Startups de l'incubateur</h2>
+        <p className="text-sm text-[#9CA3AF] mt-2">Retrouvez ici les projets approuvés par l'administration que vous pouvez accompagner.</p>
+      </div>
+
+      {startups.length === 0 ? (
+        <div className="bg-white rounded-[32px] border border-gray-200 p-16 text-center shadow-sm">
+          <Users size={48} className="mx-auto text-gray-300 mb-4" />
+          <h3 className="text-lg font-medium text-[#101D42] mb-2">Aucune startup assignée</h3>
+          <p className="text-[#9CA3AF] text-sm">Il n'y a pas encore de startups approuvées par l'administration dans le programme.</p>
+        </div>
+      ) : (
+        /* GRILLE DES VRAIES STARTUPS */
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {startups.map((startup) => {
+            // Extraction intelligente des détails (car Supabase renvoie un tableau pour les relations)
+            const details = startup.startup_profiles && startup.startup_profiles.length > 0 
+              ? startup.startup_profiles[0] 
+              : null;
+            
+            const startupName = details?.startup_name || "Nom non renseigné";
+            const sector = details?.sector || "Secteur inconnu";
+            const pitch = details?.description || "Aucune description fournie par les fondateurs.";
+            const hasDeck = !!details?.pitch_deck_path;
+
+            // Simulation de données dynamiques en attendant les fonctions avancées (Phase 7)
+            // On génère une progression aléatoire pour le design visuel
+            const fakeProgress = Math.floor(Math.random() * 40) + 40; 
+
+            return (
+              <div key={startup.id} className="bg-white rounded-[32px] border border-gray-200 shadow-sm hover:shadow-md hover:border-emerald-500/30 transition-all flex flex-col overflow-hidden group">
+                
+                {/* EN-TÊTE DE LA CARTE */}
+                <div className="p-8 pb-6 border-b border-gray-50 relative">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500 opacity-5 rounded-full blur-[40px] group-hover:opacity-10 transition-opacity"></div>
+                  
+                  <div className="flex justify-between items-start mb-4 relative z-10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-blue-50 text-[#2563EB] rounded-2xl flex items-center justify-center shadow-inner">
+                        <Rocket size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-medium text-[#101D42]">{startupName}</h3>
+                        <p className="text-xs font-bold text-[#9CA3AF] tracking-wider uppercase mt-0.5">{sector}</p>
+                      </div>
+                    </div>
+                    
+                    <span className="text-[10px] font-bold tracking-[0.1em] uppercase px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">
+                      Actif
+                    </span>
+                  </div>
+
+                  <p className="text-sm text-gray-600 leading-relaxed italic relative z-10 line-clamp-3">
+                    "{pitch}"
+                  </p>
+                </div>
+
+                {/* CORPS DE LA CARTE */}
+                <div className="p-8 bg-[#FAFAFA] flex-1">
+                  
+                  {/* Fondateurs */}
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-[#101D42] border-2 border-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
+                        {startup.full_name.charAt(0)}
+                      </div>
+                      <span className="text-xs font-medium text-[#101D42] ml-2">Par {startup.full_name}</span>
+                    </div>
+                    
+                    <button className="text-[10px] font-bold text-[#2563EB] uppercase hover:underline flex items-center gap-1">
+                      Voir le profil <ChevronRight size={14} />
+                    </button>
+                  </div>
+
+                  {/* Jauge de progression (Visuel simulé pour l'instant) */}
+                  <div className="mb-8">
+                    <div className="flex justify-between text-[10px] font-bold tracking-widest text-[#9CA3AF] uppercase mb-2">
+                      <span className="flex items-center gap-1.5"><Target size={14} className="text-[#101D42]" /> Objectifs & Formations</span>
+                      <span className="text-[#101D42]">{fakeProgress}%</span>
+                    </div>
+                    <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-[#101D42] rounded-full" style={{ width: `${fakeProgress}%` }}></div>
+                    </div>
+                  </div>
+
+                  {/* Prochain RDV */}
+                  <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="bg-emerald-50 p-2.5 rounded-xl text-emerald-600 shrink-0">
+                      <Calendar size={18} />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold text-[#9CA3AF] uppercase tracking-wider">Prochaine Session Visio</p>
+                      <p className="text-sm font-medium text-[#101D42] mt-0.5">À planifier</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* PIED DE LA CARTE (Boutons d'action Connectés !) */}
+                <div className="p-6 bg-white border-t border-gray-50 flex gap-4">
+                  <button 
+                    onClick={() => handleDownloadDeck(startup.id, details?.pitch_deck_path)}
+                    disabled={!hasDeck || downloadingId === startup.id}
+                    className={`flex-1 flex items-center justify-center gap-2 border py-3.5 rounded-full text-xs font-bold tracking-wide transition-colors ${
+                      hasDeck 
+                        ? 'border-gray-200 text-[#101D42] hover:bg-[#F8FAFC]' 
+                        : 'border-gray-100 text-gray-300 cursor-not-allowed bg-gray-50'
+                    }`}
+                  >
+                    {downloadingId === startup.id ? <Loader2 size={16} className="animate-spin text-[#2563EB]" /> : <FileText size={16} className={hasDeck ? "text-[#2563EB]" : "text-gray-300"} />}
+                    {hasDeck ? "LIRE LE PITCH" : "AUCUN PITCH"}
+                  </button>
+
+                  <Link href="/messages" className="flex-1 flex items-center justify-center gap-2 bg-[#101D42] text-white py-3.5 rounded-full text-xs font-bold tracking-wide hover:bg-[#1a2b5e] transition-colors shadow-md">
+                    <MessageCircle size={16} className="text-emerald-400" /> DISCUTER
+                  </Link>
+                </div>
+
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\messages\page.tsx =====
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { Search, Send, Paperclip, MoreVertical, CheckCheck, Loader2, MessageSquare } from "lucide-react";
+
+type Contact = {
+  id: string;
+  full_name: string;
+  role: string;
+  avatar_url?: string;
+};
+
+// Historique simulé pour valider l'UX
+const INITIAL_CHAT = [
+  { id: 1, text: "Bonjour ! Comment puis-je vous aider aujourd'hui ? 👋", sender: "them", time: "10:00" },
+];
+
+export default function MessagesPage() {
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [activeChat, setActiveChat] = useState<Contact | null>(null);
+  const [loading, setLoading] = useState(true);
+  
+  const [messages, setMessages] = useState(INITIAL_CHAT);
+  const [newMessage, setNewMessage] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  useEffect(() => { scrollToBottom(); }, [messages, activeChat]);
+
+  // Chargement des VRAIS contacts depuis la base de données
+  useEffect(() => {
+    const fetchContacts = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // 1. Quel est mon rôle ?
+        const { data: myProfile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+        if (!myProfile) return;
+        setCurrentUserRole(myProfile.role);
+
+        // 2. Qui ai-je le droit de contacter ?
+        let targetRoles: string[] = [];
+        if (myProfile.role === 'startup') targetRoles = ['mentor', 'admin'];
+        else if (myProfile.role === 'mentor') targetRoles = ['startup', 'admin'];
+        else if (myProfile.role === 'investor') targetRoles = ['startup', 'admin'];
+        else if (myProfile.role === 'admin') targetRoles = ['startup', 'mentor', 'investor'];
+
+        // 3. Récupérer les profils approuvés correspondants
+        const { data: usersData, error } = await supabase
+          .from('profiles')
+          .select('id, full_name, role, avatar_url')
+          .in('role', targetRoles)
+          .eq('status', 'approved')
+          .neq('id', user.id); // Exclure soi-même
+
+        if (error) throw error;
+        if (usersData) setContacts(usersData);
+
+      } catch (error: any) {
+        console.error("Erreur chargement contacts:", error.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchContacts();
+  }, []);
+
+  // Fonction pour envoyer un message (simulé visuellement)
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !activeChat) return;
+
+    // Ajout visuel du message
+    setMessages(prev => [...prev, {
+      id: Date.now(),
+      text: newMessage,
+      sender: "me",
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }]);
+    setNewMessage("");
+
+    // Simulation de réponse automatique (Effet WOW)
+    setTimeout(() => {
+      setMessages(prev => [...prev, {
+        id: Date.now() + 1,
+        text: "Message bien reçu ! (Ceci est une simulation en attendant l'activation du chat en temps réel).",
+        sender: "them",
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+    }, 1500);
+  };
+
+  const filteredContacts = contacts.filter(c => c.full_name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  return (
+    <div className="h-[calc(100vh-8rem)] bg-white rounded-[24px] border border-gray-200 shadow-sm flex overflow-hidden max-w-7xl mx-auto">
+      
+      {/* ========================================== */}
+      {/* COLONNE GAUCHE : VRAIE LISTE DE CONTACTS   */}
+      {/* ========================================== */}
+      <div className="w-1/3 border-r border-gray-100 flex flex-col bg-white min-w-[280px]">
+        
+        <div className="p-6 border-b border-gray-100">
+          <h2 className="text-xl font-medium text-[#101D42] mb-4">Messagerie</h2>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <Search size={16} className="text-[#9CA3AF]" />
+            </div>
+            <input
+              type="text"
+              placeholder="Rechercher un nom..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-[#F8FAFC] border border-transparent rounded-full text-sm text-[#101D42] focus:outline-none focus:border-[#2563EB]/30 focus:bg-white transition-all"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex justify-center p-10"><Loader2 className="animate-spin text-[#2563EB]" size={24} /></div>
+          ) : filteredContacts.length === 0 ? (
+            <div className="p-10 text-center text-gray-400 text-sm">Aucun contact trouvé dans votre réseau.</div>
+          ) : (
+            filteredContacts.map((contact) => (
+              <div 
+                key={contact.id}
+                onClick={() => { setActiveChat(contact); setMessages(INITIAL_CHAT); }}
+                className={`p-5 cursor-pointer transition-colors border-l-2 flex gap-4 items-center ${
+                  activeChat?.id === contact.id ? "bg-[#F8FAFC] border-[#2563EB]" : "border-transparent hover:bg-gray-50"
+                }`}
+              >
+                <div className="relative shrink-0">
+                  <div className="w-12 h-12 bg-white border border-gray-200 rounded-2xl flex items-center justify-center text-[#101D42] font-serif text-lg shadow-sm">
+                    {contact.full_name.charAt(0)}
+                  </div>
+                  {/* Pastille en ligne (verte) */}
+                  <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full"></div>
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium text-[#101D42] truncate">{contact.full_name}</h4>
+                  <p className="text-[10px] font-bold tracking-[0.1em] uppercase text-[#9CA3AF] mt-1">
+                    {contact.role}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* ========================================== */}
+      {/* COLONNE DROITE : LE CHAT ACTIF             */}
+      {/* ========================================== */}
+      <div className="flex-1 flex flex-col bg-[#FAFAFA]">
+        {!activeChat ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-10">
+            <div className="w-20 h-20 bg-blue-50 text-[#2563EB] rounded-full flex items-center justify-center mb-6">
+              <MessageSquare size={32} />
+            </div>
+            <h3 className="text-xl font-medium text-[#101D42] mb-2">Vos conversations</h3>
+            <p className="text-gray-500 max-w-sm">Sélectionnez un contact dans la liste de gauche pour démarrer une discussion sécurisée.</p>
+          </div>
+        ) : (
+          <>
+            {/* Header du Chat */}
+            <div className="h-[88px] p-6 border-b border-gray-100 bg-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-[#F8FAFC] border border-gray-200 rounded-xl flex items-center justify-center text-[#101D42] font-serif shadow-sm">
+                  {activeChat.full_name.charAt(0)}
+                </div>
+                <div>
+                  <h3 className="font-medium text-[#101D42]">{activeChat.full_name}</h3>
+                  <span className={`text-[10px] font-bold tracking-[0.1em] uppercase px-2 py-0.5 rounded-full ${
+                    activeChat.role === 'startup' ? 'bg-blue-50 text-[#2563EB]' :
+                    activeChat.role === 'mentor' ? 'bg-emerald-50 text-emerald-600' :
+                    activeChat.role === 'investor' ? 'bg-orange-50 text-orange-600' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {activeChat.role}
+                  </span>
+                </div>
+              </div>
+              <button className="w-10 h-10 rounded-full hover:bg-gray-50 flex items-center justify-center text-[#9CA3AF] transition-colors">
+                <MoreVertical size={18} />
+              </button>
+            </div>
+
+            {/* Historique des messages */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <div className="text-center">
+                <span className="text-[10px] font-bold tracking-[0.1em] uppercase bg-gray-100/80 text-gray-400 px-3 py-1 rounded-full">
+                  Aujourd'hui
+                </span>
+              </div>
+
+              {messages.map((msg) => {
+                const isMe = msg.sender === "me";
+                return (
+                  <div key={msg.id} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                    <div className="flex items-end gap-2 max-w-[75%]">
+                      <div className={`px-5 py-3.5 text-sm leading-relaxed ${
+                        isMe 
+                          ? "bg-[#101D42] text-white rounded-[20px] rounded-br-sm shadow-md" 
+                          : "bg-white border border-gray-200 text-[#101D42] rounded-[20px] rounded-bl-sm shadow-sm"
+                      }`}>
+                        {msg.text}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 mt-1.5 px-1">
+                      <span className="text-[10px] font-medium text-[#9CA3AF]">{msg.time}</span>
+                      {isMe && <CheckCheck size={14} className="text-[#2563EB]" />}
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Zone de saisie */}
+            <div className="p-4 bg-white border-t border-gray-100">
+              <form onSubmit={handleSendMessage} className="flex items-end gap-3 bg-[#F8FAFC] border border-gray-200 rounded-2xl p-2 focus-within:border-[#2563EB]/50 focus-within:bg-white transition-all shadow-sm">
+                
+                <button type="button" className="p-3 text-[#9CA3AF] hover:text-[#101D42] transition-colors shrink-0">
+                  <Paperclip size={20} />
+                </button>
+                
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder={`Écrivez à ${activeChat.full_name.split(' ')[0]}...`}
+                  className="flex-1 bg-transparent border-none focus:outline-none text-sm text-[#101D42] py-3"
+                />
+                
+                <button 
+                  type="submit"
+                  disabled={!newMessage.trim()}
+                  className="p-3 bg-[#2563EB] hover:bg-blue-700 text-white rounded-xl transition-colors disabled:opacity-50 disabled:hover:bg-[#2563EB] shrink-0 shadow-md"
+                >
+                  <Send size={18} className="ml-0.5" />
+                </button>
+              </form>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\projet\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { Target, CheckCircle2, Circle, Plus, Loader2, Trash2 } from "lucide-react";
+
+export default function ProjetPage() {
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchSessionAndTasks();
+  }, []);
+
+  const fetchSessionAndTasks = async () => {
+    setLoading(true);
+    // Utilisation de getUser() qui est beaucoup plus fiable et sécurisé que getSession()
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (user) {
+      setUserId(user.id);
+      
+      const { data, error } = await supabase
+        .from("tasks")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        alert("Erreur de lecture : " + error.message);
+      }
+      if (data) setTasks(data);
+    } else {
+      console.log("Utilisateur non détecté.");
+    }
+    setLoading(false);
+  };
+
+  const handleAddTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskTitle.trim()) return;
+    
+    // Si l'utilisateur n'est pas détecté, on le dit !
+    if (!userId) {
+      alert("Erreur : Votre session est introuvable. Essayez de vous déconnecter et vous reconnecter.");
+      return;
+    }
+
+    setAdding(true);
+    
+    const { data, error } = await supabase
+      .from("tasks")
+      .insert([
+        { 
+          user_id: userId, 
+          title: newTaskTitle, 
+          status: "todo" 
+        }
+      ])
+      .select();
+
+    // Si Supabase bloque l'action, on affiche l'erreur exacte
+    if (error) {
+      alert("Erreur Supabase : " + error.message);
+      console.error(error);
+    }
+
+    if (data && data.length > 0) {
+      setTasks([data[0], ...tasks]);
+      setNewTaskTitle("");
+    }
+    
+    setAdding(false);
+  };
+
+  const toggleTaskStatus = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === "done" ? "todo" : "done";
+    setTasks(tasks.map(t => t.id === id ? { ...t, status: newStatus } : t));
+
+    const { error } = await supabase
+      .from("tasks")
+      .update({ status: newStatus })
+      .eq("id", id);
+      
+    if (error) alert("Erreur mise à jour : " + error.message);
+  };
+
+  const deleteTask = async (id: string) => {
+    setTasks(tasks.filter(t => t.id !== id));
+    const { error } = await supabase.from("tasks").delete().eq("id", id);
+    if (error) alert("Erreur suppression : " + error.message);
+  };
+
+  return (
+    <div className="max-w-4xl bg-white rounded-[24px] border border-gray-200 p-10 shadow-sm">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">Feuille de route</p>
+          <h2 className="text-2xl font-medium text-[#101D42]">Mes Objectifs</h2>
+        </div>
+      </div>
+
+      <form onSubmit={handleAddTask} className="mb-10 flex gap-4">
+        <input 
+          type="text" 
+          value={newTaskTitle}
+          onChange={(e) => setNewTaskTitle(e.target.value)}
+          placeholder="Nouvelle étape pour ma startup..." 
+          className="flex-1 border border-gray-200 rounded-full px-6 py-3 text-sm focus:outline-none focus:border-[#101D42] text-[#101D42]"
+          disabled={adding}
+        />
+        <button 
+          type="submit" 
+          disabled={adding || !newTaskTitle.trim()}
+          className="bg-[#101D42] text-white px-6 py-3 rounded-full text-xs font-semibold tracking-wide flex items-center gap-2 disabled:opacity-50 hover:bg-[#1a2b5e] transition-colors"
+        >
+          {adding ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} 
+          AJOUTER
+        </button>
+      </form>
+
+      {loading ? (
+        <div className="flex justify-center items-center py-20 text-[#9CA3AF]">
+          <Loader2 className="animate-spin" size={32} />
+        </div>
+      ) : tasks.length === 0 ? (
+        <div className="text-center py-16 border-2 border-dashed border-gray-100 rounded-2xl">
+          <Target size={48} className="mx-auto text-gray-200 mb-4" />
+          <p className="text-[#9CA3AF] font-medium">Aucun objectif pour le moment.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {tasks.map((task) => {
+            const isDone = task.status === "done";
+            return (
+              <div key={task.id} className="flex gap-4 items-center group bg-white border border-gray-100 hover:border-gray-200 p-5 rounded-2xl transition-all">
+                <button onClick={() => toggleTaskStatus(task.id, task.status)} className="mt-0.5 flex-shrink-0">
+                  {isDone ? <CheckCircle2 className="text-[#2563EB]" size={24} /> : <Circle className="text-gray-300 hover:text-[#101D42] transition-colors" size={24} />}
+                </button>
+                <div className="flex-1">
+                  <h3 className={`text-base font-medium transition-colors ${isDone ? 'text-[#9CA3AF] line-through' : 'text-[#101D42]'}`}>
+                    {task.title}
+                  </h3>
+                </div>
+                <button 
+                  onClick={() => deleteTask(task.id)}
+                  className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all p-2"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\reseau\page.tsx =====
+"use client";
+
+import { useState } from "react";
+import { Search, MessageCircle, Star, Briefcase, MapPin } from "lucide-react";
+import { useRouter } from "next/navigation";
+
+// Nos fausses données (Mock) pour le prototype
+const NETWORK_PROFILES = [
+  { id: 1, name: "Sarah Diop", role: "mentor", title: "Senior Product Manager", company: "Jumia Tech", location: "Dakar, Sénégal", tags: ["UX Design", "Agile", "Product"], rating: 4.9 },
+  { id: 2, name: "Omar Kane", role: "investor", title: "Investment Director", company: "Africa Tech Ventures", location: "Casablanca, Maroc", tags: ["Series A", "Fintech", "Seed"], rating: 4.8 },
+  { id: 3, name: "Marc Olivier", role: "mentor", title: "Directeur Financier", company: "Banque Atlantique", location: "Abidjan, RCI", tags: ["Finance", "Business Plan", "Levée"], rating: 5.0 },
+  { id: 4, name: "Fatou Sall", role: "mentor", title: "Marketing Director", company: "Wave Mobile Money", location: "Dakar, Sénégal", tags: ["Growth", "Acquisition", "B2C"], rating: 4.7 },
+  { id: 5, name: "TechCorp Africa", role: "corporate", title: "Corporate Partner", company: "TechCorp", location: "Lagos, Nigeria", tags: ["Partenariat", "B2B", "Scale"], rating: null },
+];
+
+export default function ReseauPage() {
+  const router = useRouter();
+  
+  // States pour les filtres et la recherche
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState("tous");
+
+  // Logique de filtrage instantané
+  const filteredProfiles = NETWORK_PROFILES.filter((profile) => {
+    // 1. Filtre par onglet (Rôle)
+    const matchesFilter = activeFilter === "tous" || profile.role === activeFilter;
+    
+    // 2. Filtre par texte (Nom, entreprise ou tags)
+    const searchLower = searchQuery.toLowerCase();
+    const matchesSearch = 
+      profile.name.toLowerCase().includes(searchLower) || 
+      profile.company.toLowerCase().includes(searchLower) ||
+      profile.tags.some(tag => tag.toLowerCase().includes(searchLower));
+
+    return matchesFilter && matchesSearch;
+  });
+
+  const handleContact = (name: string) => {
+    // On simule l'ouverture d'une conversation et on redirige vers les messages
+    alert(`💬 Ouverture d'une conversation sécurisée avec ${name}...`);
+    router.push("/messages");
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto h-full flex flex-col">
+      
+      {/* HEADER DE LA PAGE */}
+      <div className="mb-8">
+        <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">Écosystème TechStratix</p>
+        <h2 className="text-2xl font-medium text-[#101D42]">Annuaire des Experts & Partenaires</h2>
+      </div>
+
+      {/* BARRE DE RECHERCHE & FILTRES */}
+      <div className="bg-white p-4 rounded-[24px] border border-gray-200 shadow-sm mb-8 flex flex-col md:flex-row gap-4 justify-between items-center sticky top-0 z-10">
+        
+        {/* Input de recherche */}
+        <div className="relative w-full md:w-96">
+          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+            <Search size={18} className="text-[#9CA3AF]" />
+          </div>
+          <input
+            type="text"
+            placeholder="Rechercher une compétence, un nom, une entreprise..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-11 pr-4 py-3 bg-[#F8FAFC] border-none rounded-full text-sm text-[#101D42] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 transition-all"
+          />
+        </div>
+
+        {/* Pilules de filtres */}
+        <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 hide-scrollbar">
+          {[
+            { id: "tous", label: "Tous les profils" },
+            { id: "mentor", label: "Mentors" },
+            { id: "investor", label: "Investisseurs" },
+            { id: "corporate", label: "Entreprises" },
+          ].map((filter) => (
+            <button
+              key={filter.id}
+              onClick={() => setActiveFilter(filter.id)}
+              className={`px-5 py-2.5 rounded-full text-xs font-semibold tracking-wide transition-all whitespace-nowrap ${
+                activeFilter === filter.id
+                  ? "bg-[#101D42] text-white shadow-md"
+                  : "bg-white border border-gray-200 text-[#9CA3AF] hover:text-[#101D42] hover:border-[#101D42]"
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* GRILLE DES RÉSULTATS */}
+      {filteredProfiles.length === 0 ? (
+        <div className="text-center py-20 bg-white border border-gray-200 rounded-[24px]">
+          <Search size={48} className="mx-auto text-gray-200 mb-4" />
+          <p className="text-[#101D42] font-medium text-lg">Aucun profil ne correspond à votre recherche.</p>
+          <p className="text-[#9CA3AF] text-sm mt-2">Essayez d'autres mots-clés ou modifiez vos filtres.</p>
+          <button 
+            onClick={() => { setSearchQuery(""); setActiveFilter("tous"); }}
+            className="mt-6 text-[#2563EB] text-sm font-semibold hover:underline"
+          >
+            Réinitialiser la recherche
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pb-10">
+          {filteredProfiles.map((profile) => (
+            <div key={profile.id} className="bg-white rounded-[24px] border border-gray-200 p-8 shadow-sm flex flex-col justify-between hover:border-[#2563EB]/40 transition-colors">
+              
+              {/* En-tête de la carte */}
+              <div>
+                <div className="flex justify-between items-start mb-5">
+                  <div className="w-16 h-16 bg-[#F8FAFC] rounded-2xl border border-gray-100 flex items-center justify-center text-[#101D42] font-serif text-2xl shadow-sm">
+                    {profile.name.charAt(0)}
+                  </div>
+                  {profile.rating && (
+                    <div className="flex items-center gap-1.5 bg-orange-50 text-orange-600 px-3 py-1 rounded-full text-xs font-bold">
+                      <Star size={12} fill="currentColor" /> {profile.rating}
+                    </div>
+                  )}
+                </div>
+                
+                <h3 className="text-xl font-medium text-[#101D42] mb-1">{profile.name}</h3>
+                
+                <div className="space-y-1.5 mb-6">
+                  <div className="flex items-center gap-2 text-sm font-medium text-[#2563EB]">
+                    <Briefcase size={14} /> {profile.title} @ {profile.company}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-[#9CA3AF] font-medium">
+                    <MapPin size={14} /> {profile.location}
+                  </div>
+                </div>
+                
+                {/* Tags (Compétences) */}
+                <div className="flex flex-wrap gap-2 mb-8">
+                  {profile.tags.map(tag => (
+                    <span key={tag} className="text-[10px] font-bold tracking-[0.1em] text-[#101D42] bg-[#F8FAFC] border border-gray-200 px-3 py-1.5 rounded-md uppercase">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Action */}
+              <button 
+                onClick={() => handleContact(profile.name)}
+                className="w-full flex justify-center items-center gap-2 bg-[#F8FAFC] hover:bg-[#EFF6FF] hover:text-[#2563EB] text-[#101D42] py-3.5 rounded-full text-xs font-semibold tracking-wide transition-colors border border-gray-100"
+              >
+                <MessageCircle size={16} /> CONTACTER
+              </button>
+
+            </div>
+          ))}
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+
+===== FILE: app\(dashboard)\settings\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { User, ShieldCheck, Loader2, Save } from "lucide-react";
+
+export default function SettingsPage() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState("compte");
+  
+  // Données
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  
+  // Sécurité
+  const [newPassword, setNewPassword] = useState("");
+
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  const fetchUserData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      setUserId(user.id);
+      setUserEmail(user.email || "");
+
+      const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).single();
+      if (profile) {
+        setFullName(profile.full_name);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId) return;
+    
+    setSaving(true);
+    try {
+      const { error } = await supabase.from("profiles").update({ full_name: fullName }).eq("id", userId);
+      if (error) throw error;
+      alert("✅ Profil mis à jour avec succès.");
+    } catch (error: any) {
+      alert("❌ Erreur : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) {
+      alert("⚠️ Le mot de passe doit faire au moins 6 caractères.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      alert("✅ Mot de passe mis à jour avec succès.");
+      setNewPassword("");
+    } catch (error: any) {
+      alert("❌ Erreur : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[#2563EB]" size={32} /></div>;
+
+  return (
+    <div className="max-w-4xl mx-auto pb-12">
+      
+      <div className="mb-10">
+        <p className="text-[10px] font-bold tracking-[0.15em] text-[#9CA3AF] uppercase mb-2">Configuration</p>
+        <h2 className="text-2xl font-medium text-[#101D42]">Paramètres du compte</h2>
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-8 items-start">
+        
+        {/* MENU LATÉRAL */}
+        <div className="w-full md:w-64 bg-white rounded-[24px] border border-gray-200 p-4 shadow-sm shrink-0">
+          <nav className="space-y-1">
+            <button 
+              onClick={() => setActiveTab("compte")}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${activeTab === "compte" ? "bg-[#F8FAFC] text-[#101D42] font-bold" : "text-[#9CA3AF] hover:text-[#101D42] hover:bg-gray-50"}`}
+            >
+              <User size={18} /> Informations
+            </button>
+            <button 
+              onClick={() => setActiveTab("securite")}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${activeTab === "securite" ? "bg-[#F8FAFC] text-[#101D42] font-bold" : "text-[#9CA3AF] hover:text-[#101D42] hover:bg-gray-50"}`}
+            >
+              <ShieldCheck size={18} /> Sécurité
+            </button>
+          </nav>
+        </div>
+
+        {/* CONTENU ACTIF */}
+        <div className="flex-1 w-full bg-white rounded-[24px] border border-gray-200 p-8 shadow-sm">
+          
+          {/* ONGLET 1 : COMPTE */}
+          {activeTab === "compte" && (
+            <form onSubmit={handleSaveProfile} className="space-y-6">
+              <div className="border-b border-gray-100 pb-6 mb-6">
+                <h3 className="text-lg font-medium text-[#101D42]">Informations personnelles</h3>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">E-mail (Identifiant)</label>
+                <input type="email" disabled value={userEmail} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-500 cursor-not-allowed" />
+                <p className="text-[10px] text-gray-400 mt-1">L'adresse e-mail ne peut pas être modifiée ici.</p>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Nom Complet</label>
+                <input type="text" required value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-[#101D42] focus:outline-none focus:border-[#2563EB]" />
+              </div>
+
+              <div className="pt-4 flex justify-end">
+                <button type="submit" disabled={saving} className="bg-[#101D42] hover:bg-[#1a2b5e] text-white px-8 py-3 rounded-full text-xs font-semibold tracking-wide flex items-center gap-2 transition-colors disabled:opacity-70">
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} METTRE À JOUR
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* ONGLET 2 : SÉCURITÉ */}
+          {activeTab === "securite" && (
+            <form onSubmit={handleUpdatePassword} className="space-y-6">
+              <div className="border-b border-gray-100 pb-6 mb-6">
+                <h3 className="text-lg font-medium text-[#101D42]">Modifier le mot de passe</h3>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Nouveau mot de passe</label>
+                <input type="password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-[#101D42] focus:outline-none focus:border-[#2563EB]" placeholder="••••••••" />
+              </div>
+
+              <div className="pt-4 flex justify-end">
+                <button type="submit" disabled={saving || !newPassword} className="bg-[#2563EB] hover:bg-blue-700 text-white px-8 py-3 rounded-full text-xs font-semibold tracking-wide flex items-center gap-2 transition-colors disabled:opacity-70">
+                  {saving ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />} SAUVEGARDER
+                </button>
+              </div>
+            </form>
+          )}
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+===== FILE: app\globals.css =====
+@import "tailwindcss";
+
+@theme {
+  /* Nos couleurs TechStratix */
+  --color-brand-navy: #101D42;
+  --color-brand-silver: #9CA3AF;
+  --color-brand-light: #F8FAFC;
+  --color-brand-accent: #2563EB;
+
+  /* Nos polices personnalisées */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-playfair), ui-serif, Georgia, serif;
+}
+
+/* Couleurs de fond par défaut pour l'application */
+body {
+  background-color: var(--color-brand-light);
+  color: var(--color-brand-navy);
+}
+
+
+===== FILE: app\layout.tsx =====
+import type { Metadata } from "next";
+import { Poppins, Playfair_Display } from "next/font/google";
+import "./globals.css";
+import { Toaster } from "sonner"; // 1. L'IMPORT
+
+const poppins = Poppins({ 
+  subsets: ["latin"],
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-poppins'
+});
+
+const playfair = Playfair_Display({ 
+  subsets: ["latin"],
+  style: ['italic'],
+  variable: '--font-playfair'
+});
+
+export const metadata: Metadata = {
+  title: "TechStratix | Accélérateur & Hub d'Investissement",
+  description: "Plateforme d'accompagnement pour startups, mentors et investisseurs.",
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode; }>) {
+  return (
+    <html lang="fr" className="scroll-smooth">
+      <body className={`${poppins.variable} ${playfair.variable} font-sans bg-[#F8FAFC] text-[#101D42] antialiased`}>
+        {children}
+        {/* 2. LE COMPOSANT TOASTER (Design riche et en haut au centre) */}
+        <Toaster richColors position="top-center" />
+      </body>
+    </html>
+  );
+}

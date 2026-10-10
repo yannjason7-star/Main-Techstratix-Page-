@@ -1,0 +1,1904 @@
+
+
+===== FILE: components\Ballpit.tsx =====
+// @ts-nocheck
+"use client";
+
+import { useEffect, useRef } from 'react';
+import {
+  Vector3 as a,
+  MeshPhysicalMaterial as c,
+  InstancedMesh as d,
+  Timer as e,
+  AmbientLight as f,
+  SphereGeometry as g,
+  Scene as i,
+  Color as l,
+  Object3D as m,
+  SRGBColorSpace as n,
+  MathUtils as o,
+  PMREMGenerator as p,
+  Vector2 as r,
+  WebGLRenderer as s,
+  PerspectiveCamera as t,
+  PointLight as u,
+  ACESFilmicToneMapping as v,
+  Plane as w,
+  Raycaster as y
+} from 'three';
+import { RoomEnvironment as z } from 'three/examples/jsm/environments/RoomEnvironment.js';
+
+class x {
+  #e; canvas; camera; cameraMinAspect; cameraMaxAspect; cameraFov; maxPixelRatio; minPixelRatio; scene; renderer; #t;
+  size = { width: 0, height: 0, wWidth: 0, wHeight: 0, ratio: 0, pixelRatio: 0 };
+  render = this.#i; onBeforeRender = () => {}; onAfterRender = () => {}; onAfterResize = () => {};
+  #s = false; #n = false; #boundResize = this.#f.bind(this); #boundVisibilityChange = this.#v.bind(this);
+  isDisposed = false; #o; #r; #a; #c = new e(); #h = { elapsed: 0, delta: 0 }; #l;
+
+  constructor(e) {
+    this.#e = { ...e };
+    this.#m(); this.#d(); this.#p(); this.resize(); this.#g();
+  }
+  #m() { this.camera = new t(); this.cameraFov = this.camera.fov; }
+  #d() { this.scene = new i(); }
+  #p() {
+    if (this.#e.canvas) this.canvas = this.#e.canvas;
+    else if (this.#e.id) this.canvas = document.getElementById(this.#e.id);
+    this.canvas.style.display = 'block';
+    const e = { canvas: this.canvas, powerPreference: 'high-performance', alpha: true, ...(this.#e.rendererOptions ?? {}) };
+    this.renderer = new s(e); this.renderer.outputColorSpace = n;
+  }
+  #g() {
+    if (!(this.#e.size instanceof Object)) {
+      window.addEventListener('resize', this.#boundResize);
+    }
+    this.#o = new IntersectionObserver(this.#u.bind(this), { root: null, rootMargin: '0px', threshold: 0 });
+    this.#o.observe(this.canvas);
+    document.addEventListener('visibilitychange', this.#boundVisibilityChange);
+  }
+  #y() {
+    window.removeEventListener('resize', this.#boundResize);
+    this.#r?.disconnect(); this.#o?.disconnect(); document.removeEventListener('visibilitychange', this.#boundVisibilityChange);
+  }
+  #u(e) { this.#s = e[0].isIntersecting; this.#s ? this.#w() : this.#z(); }
+  #v() { if (this.#s) document.hidden ? this.#z() : this.#w(); }
+  #f() { if (this.#a) clearTimeout(this.#a); this.#a = setTimeout(this.resize.bind(this), 100); }
+  resize() {
+    let e = this.canvas.parentNode ? this.canvas.parentNode.offsetWidth : window.innerWidth;
+    let t = this.canvas.parentNode ? this.canvas.parentNode.offsetHeight : window.innerHeight;
+    this.size.width = e; this.size.height = t; this.size.ratio = e / t;
+    this.#x(); this.#b(); this.onAfterResize(this.size);
+  }
+  #x() {
+    this.camera.aspect = this.size.width / this.size.height;
+    this.camera.updateProjectionMatrix(); this.updateWorldSize();
+  }
+  updateWorldSize() {
+    if (this.camera.isPerspectiveCamera) {
+      const e = (this.camera.fov * Math.PI) / 180;
+      this.size.wHeight = 2 * Math.tan(e / 2) * this.camera.position.length();
+      this.size.wWidth = this.size.wHeight * this.camera.aspect;
+    }
+  }
+  #b() {
+    this.renderer.setSize(this.size.width, this.size.height);
+    let e = window.devicePixelRatio;
+    if (this.maxPixelRatio && e > this.maxPixelRatio) e = this.maxPixelRatio;
+    this.renderer.setPixelRatio(e); this.size.pixelRatio = e;
+  }
+  #w() {
+    if (this.#n) return;
+    const animate = () => {
+      this.#l = requestAnimationFrame(animate); this.#c.update(); this.#h.delta = this.#c.getDelta();
+      this.#h.elapsed += this.#h.delta; this.onBeforeRender(this.#h); this.render(); this.onAfterRender(this.#h);
+    };
+    this.#n = true; this.#c.reset(); animate();
+  }
+  #z() { if (this.#n) { cancelAnimationFrame(this.#l); this.#n = false; } }
+  #i() { this.renderer.render(this.scene, this.camera); }
+  clear() {
+    this.scene.traverse(e => {
+      if (e.isMesh && typeof e.material === 'object' && e.material !== null) {
+        Object.keys(e.material).forEach(t => { const i = e.material[t]; if (i !== null && typeof i === 'object' && typeof i.dispose === 'function') i.dispose(); });
+        e.material.dispose(); e.geometry.dispose();
+      }
+    });
+    this.scene.clear();
+  }
+  dispose() { 
+    this.#y(); this.#z(); this.#c.dispose(); this.clear(); this.renderer.dispose(); this.isDisposed = true; 
+  }
+}
+
+const b = new Map(), A = new r();
+let R = false;
+function S(e) {
+  const t = { position: new r(), nPosition: new r(), hover: false, touching: false, onEnter() {}, onMove() {}, onClick() {}, onLeave() {}, ...e };
+  (function (e, t) {
+    if (!b.has(e)) {
+      b.set(e, t);
+      if (!R) {
+        document.body.addEventListener('pointermove', M); document.body.addEventListener('pointerleave', L); 
+        R = true;
+      }
+    }
+  })(e.domElement, t);
+  t.dispose = () => {
+    const t = e.domElement; b.delete(t);
+    if (b.size === 0) {
+      document.body.removeEventListener('pointermove', M); document.body.removeEventListener('pointerleave', L);
+      R = false;
+    }
+  };
+  return t;
+}
+
+function M(e) { A.x = e.clientX; A.y = e.clientY; processInteraction(); }
+function processInteraction() {
+  for (const [elem, t] of b) {
+    const i = elem.getBoundingClientRect();
+    if (D(i)) { P(t, i); if (!t.hover) { t.hover = true; t.onEnter(t); } t.onMove(t); } else if (t.hover && !t.touching) { t.hover = false; t.onLeave(t); }
+  }
+}
+function L() { for (const t of b.values()) { if (t.hover) { t.hover = false; t.onLeave(t); } } }
+function P(e, t) { const { position: i, nPosition: s } = e; i.x = A.x - t.left; i.y = A.y - t.top; s.x = (i.x / t.width) * 2 - 1; s.y = (-i.y / t.height) * 2 + 1; }
+function D(e) { const { x: t, y: i } = A; const { left: s, top: n, width: o, height: r } = e; return t >= s && t <= s + o && i >= n && i <= n + r; }
+
+const { randFloat: k, randFloatSpread: E } = o;
+const F = new a(); const I = new a(); const O = new a(); const V = new a(); const B = new a(); const N = new a(); const _ = new a(); const j = new a(); const H = new a(); const T = new a();
+
+class W {
+  constructor(e) { this.config = e; this.positionData = new Float32Array(3 * e.count).fill(0); this.velocityData = new Float32Array(3 * e.count).fill(0); this.sizeData = new Float32Array(e.count).fill(1); this.center = new a(); this.#R(); this.setSizes(); }
+  #R() { 
+    const { config: e, positionData: t, velocityData: v } = this; 
+    this.center.toArray(t, 0); 
+    for (let i = 1; i < e.count; i++) { 
+      const s = 3 * i; 
+      t[s] = E(2 * e.maxX); t[s + 1] = E(2 * e.maxY); t[s + 2] = E(2 * e.maxZ); 
+      /* Vitesse initiale aléatoire pour voler en apesanteur ! */
+      v[s] = E(0.2); v[s + 1] = E(0.2); v[s + 2] = E(0.2);
+    } 
+  }
+  setSizes() { const { config: e, sizeData: t } = this; t[0] = e.size0; for (let i = 1; i < e.count; i++) { t[i] = k(e.minSize, e.maxSize); } }
+  update(e) {
+    const { config: t, center: i, positionData: s, sizeData: n, velocityData: o } = this;
+    let r = 0;
+    if (t.controlSphere0) { r = 1; F.fromArray(s, 0); F.lerp(i, 0.1).toArray(s, 0); V.set(0, 0, 0).toArray(o, 0); }
+    for (let idx = r; idx < t.count; idx++) { const base = 3 * idx; I.fromArray(s, base); B.fromArray(o, base); B.y -= e.delta * t.gravity * n[idx]; B.multiplyScalar(t.friction); B.clampLength(0, t.maxVelocity); I.add(B); I.toArray(s, base); B.toArray(o, base); }
+    for (let idx = r; idx < t.count; idx++) {
+      const base = 3 * idx; I.fromArray(s, base); B.fromArray(o, base); const radius = n[idx];
+      for (let jdx = idx + 1; jdx < t.count; jdx++) {
+        const otherBase = 3 * jdx; O.fromArray(s, otherBase); N.fromArray(o, otherBase); const otherRadius = n[jdx];
+        _.copy(O).sub(I); const dist = _.length(); const sumRadius = radius + otherRadius;
+        if (dist < sumRadius) {
+          const overlap = sumRadius - dist; j.copy(_).normalize().multiplyScalar(0.5 * overlap); H.copy(j).multiplyScalar(Math.max(B.length(), 1)); T.copy(j).multiplyScalar(Math.max(N.length(), 1));
+          I.sub(j); B.sub(H); I.toArray(s, base); B.toArray(o, base); O.add(j); N.add(T); O.toArray(s, otherBase); N.toArray(o, otherBase);
+        }
+      }
+      if (t.controlSphere0) { _.copy(F).sub(I); const dist = _.length(); const sumRadius0 = radius + n[0]; if (dist < sumRadius0) { const diff = sumRadius0 - dist; j.copy(_.normalize()).multiplyScalar(diff); H.copy(j).multiplyScalar(Math.max(B.length(), 2)); I.sub(j); B.sub(H); } }
+      if (Math.abs(I.x) + radius > t.maxX) { I.x = Math.sign(I.x) * (t.maxX - radius); B.x = -B.x * t.wallBounce; }
+      if (t.gravity === 0) { if (Math.abs(I.y) + radius > t.maxY) { I.y = Math.sign(I.y) * (t.maxY - radius); B.y = -B.y * t.wallBounce; } } else if (I.y - radius < -t.maxY) { I.y = -t.maxY + radius; B.y = -B.y * t.wallBounce; }
+      const maxBoundary = Math.max(t.maxZ, t.maxSize);
+      if (Math.abs(I.z) + radius > maxBoundary) { I.z = Math.sign(I.z) * (t.maxZ - radius); B.z = -B.z * t.wallBounce; }
+      I.toArray(s, base); B.toArray(o, base);
+    }
+  }
+}
+
+// CORRECTION MAJEURE : On utilise le Material de base sans hack de shader !
+class Y extends c {
+  constructor(e) {
+    super(e);
+  }
+}
+
+const X = {
+  count: 100, 
+  colors: [0x2563EB, 0x101D42, 0x9CA3AF], 
+  ambientColor: 0xffffff,
+  ambientIntensity: 1,
+  lightIntensity: 200,
+  materialParams: { metalness: 0.5, roughness: 0.5, clearcoat: 1, clearcoatRoughness: 0.15 },
+  minSize: 0.5, maxSize: 1, size0: 1, gravity: 0, 
+  friction: 0.987, 
+  wallBounce: 0.95, maxVelocity: 0.15, maxX: 5, maxY: 5, maxZ: 2, controlSphere0: false, followCursor: false
+};
+
+const U = new m();
+
+class Z extends d {
+  constructor(e, t = {}) {
+    const i = { ...X, ...t };
+    const s = new z();
+    const n = new p(e, 0.04).fromScene(s).texture;
+    const o = new g();
+    const r = new Y({ envMap: n, ...i.materialParams });
+    super(o, r, i.count);
+    this.config = i; this.physics = new W(i); this.#S(); this.setColors(i.colors);
+  }
+  #S() { this.ambientLight = new f(this.config.ambientColor, this.config.ambientIntensity); this.add(this.ambientLight); this.light = new u(this.config.colors[0], this.config.lightIntensity); this.add(this.light); }
+  setColors(e) {
+    if (Array.isArray(e) && e.length > 1) {
+      const t = (function (e) {
+        let t, i;
+        function setColors(e) { t = e; i = []; t.forEach(col => { i.push(new l(col)); }); }
+        setColors(e);
+        return {
+          setColors,
+          getColorAt: function (ratio, out = new l()) {
+            const scaled = Math.max(0, Math.min(1, ratio)) * (t.length - 1);
+            const idx = Math.floor(scaled); const start = i[idx];
+            if (idx >= t.length - 1) return start.clone();
+            const alpha = scaled - idx; const end = i[idx + 1];
+            out.r = start.r + alpha * (end.r - start.r); out.g = start.g + alpha * (end.g - start.g); out.b = start.b + alpha * (end.b - start.b);
+            return out;
+          }
+        };
+      })(e);
+      for (let idx = 0; idx < this.count; idx++) { this.setColorAt(idx, t.getColorAt(idx / this.count)); if (idx === 0) { this.light.color.copy(t.getColorAt(idx / this.count)); } }
+      this.instanceColor.needsUpdate = true;
+    }
+  }
+  update(e) {
+    this.physics.update(e);
+    for (let idx = 0; idx < this.count; idx++) {
+      U.position.fromArray(this.physics.positionData, 3 * idx);
+      if (idx === 0 && this.config.followCursor === false) U.scale.setScalar(0); else U.scale.setScalar(this.physics.sizeData[idx]);
+      U.updateMatrix(); this.setMatrixAt(idx, U.matrix);
+      if (idx === 0) this.light.position.copy(U.position);
+    }
+    this.instanceMatrix.needsUpdate = true;
+  }
+}
+
+function createBallpit(e, t = {}) {
+  const i = new x({ canvas: e, size: 'parent', rendererOptions: { antialias: true, alpha: true } });
+  let s;
+  i.renderer.toneMapping = v; i.camera.position.set(0, 0, 20); i.camera.lookAt(0, 0, 0); i.cameraMaxAspect = 1.5; i.resize();
+  initialize(t);
+  const n = new y(); const o = new w(new a(0, 0, 1), 0); const r = new a(); let c = false;
+  e.style.touchAction = 'none'; e.style.userSelect = 'none'; e.style.webkitUserSelect = 'none';
+
+  const h = S({
+    domElement: e,
+    onMove() { n.setFromCamera(h.nPosition, i.camera); i.camera.getWorldDirection(o.normal); n.ray.intersectPlane(o, r); s.physics.center.copy(r); s.config.controlSphere0 = true; },
+    onLeave() { s.config.controlSphere0 = false; }
+  });
+  function initialize(e) { if (s) { i.clear(); i.scene.remove(s); } s = new Z(i.renderer, e); i.scene.add(s); }
+  i.onBeforeRender = e => { if (!c) s.update(e); };
+  i.onAfterResize = e => { s.config.maxX = e.wWidth / 2; s.config.maxY = e.wHeight / 2; };
+  return {
+    three: i,
+    get spheres() { return s; },
+    setCount(e) { initialize({ ...s.config, count: e }); },
+    updateConfig(newProps) {
+      if (newProps.count !== undefined && newProps.count !== s.config.count) initialize({ ...s.config, ...newProps });
+      else {
+        Object.assign(s.config, newProps);
+        if (newProps.colors) s.setColors(s.config.colors);
+        if (newProps.minSize !== undefined || newProps.maxSize !== undefined || newProps.size0 !== undefined) s.physics.setSizes();
+      }
+    },
+    togglePause() { c = !c; },
+    dispose() { h.dispose(); i.dispose(); }
+  };
+}
+
+const Ballpit = ({ className = '', followCursor = false, ...props }) => {
+  const canvasRef = useRef(null);
+  const spheresInstanceRef = useRef(null);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    try {
+      spheresInstanceRef.current = createBallpit(canvas, { followCursor, ...props });
+    } catch (e) {
+      console.warn("WebGL temporairement inactif", e);
+    }
+
+    return () => { 
+      if (spheresInstanceRef.current) { 
+        try { spheresInstanceRef.current.dispose(); } catch (e) {}
+        spheresInstanceRef.current = null; 
+      } 
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    if (spheresInstanceRef.current) {
+      try { spheresInstanceRef.current.updateConfig({ followCursor, ...props }); } catch (e) {}
+    }
+  }, [props, followCursor]);
+
+  return <canvas className={className} ref={canvasRef} style={{ width: '100%', height: '100%', outline: 'none' }} />;
+};
+
+export default Ballpit;
+
+
+===== FILE: components\BorderGlow.css =====
+.border-glow-card {
+  --edge-proximity: 0;
+  --cursor-angle: 45deg;
+  --edge-sensitivity: 30;
+  --color-sensitivity: calc(var(--edge-sensitivity) + 20);
+  --border-radius: 28px;
+  --glow-padding: 40px;
+  --cone-spread: 25;
+
+  position: relative;
+  border-radius: var(--border-radius);
+  isolation: isolate;
+  transform: translate3d(0, 0, 0.01px);
+  display: grid;
+  border: 1px solid rgb(255 255 255 / 15%);
+  background: var(--card-bg, #120F17);
+  overflow: visible;
+  box-shadow:
+    rgba(0, 0, 0, 0.1) 0px 1px 2px,
+    rgba(0, 0, 0, 0.1) 0px 2px 4px,
+    rgba(0, 0, 0, 0.1) 0px 4px 8px,
+    rgba(0, 0, 0, 0.1) 0px 8px 16px,
+    rgba(0, 0, 0, 0.1) 0px 16px 32px,
+    rgba(0, 0, 0, 0.1) 0px 32px 64px;
+}
+
+.border-glow-card--light {
+  border-color: rgb(24 24 27 / 12%);
+  box-shadow:
+    rgb(24 24 27 / 4%) 0 1px 2px,
+    rgb(24 24 27 / 5%) 0 8px 24px;
+}
+
+.border-glow-card--light {
+  /* CORRECTION : On utilise le Bleu Marine TechStratix avec 15% d'opacité pour que la carte soit bien délimitée */
+  border-color: rgba(16, 29, 66, 0.15);
+  box-shadow:
+    rgba(16, 29, 66, 0.05) 0px 4px 10px,
+    rgba(16, 29, 66, 0.02) 0px 1px 3px;
+}
+
+.border-glow-card::before,
+.border-glow-card::after,
+.border-glow-card > .edge-light {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  transition: opacity 0.25s ease-out;
+  z-index: -1;
+}
+
+.border-glow-card:not(:hover):not(.sweep-active)::before,
+.border-glow-card:not(:hover):not(.sweep-active)::after,
+.border-glow-card:not(:hover):not(.sweep-active) > .edge-light {
+  opacity: 0;
+  transition: opacity 0.75s ease-in-out;
+}
+
+/* colored mesh-gradient border */
+.border-glow-card::before {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--card-bg, #120F17) 0 100%) padding-box,
+    linear-gradient(rgb(255 255 255 / 0%) 0% 100%) border-box,
+    var(--gradient-one, radial-gradient(at 80% 55%, hsla(268, 100%, 76%, 1) 0px, transparent 50%)) border-box,
+    var(--gradient-two, radial-gradient(at 69% 34%, hsla(349, 100%, 74%, 1) 0px, transparent 50%)) border-box,
+    var(--gradient-three, radial-gradient(at 8% 6%, hsla(136, 100%, 78%, 1) 0px, transparent 50%)) border-box,
+    var(--gradient-four, radial-gradient(at 41% 38%, hsla(192, 100%, 64%, 1) 0px, transparent 50%)) border-box,
+    var(--gradient-five, radial-gradient(at 86% 85%, hsla(186, 100%, 74%, 1) 0px, transparent 50%)) border-box,
+    var(--gradient-six, radial-gradient(at 82% 18%, hsla(52, 100%, 65%, 1) 0px, transparent 50%)) border-box,
+    var(--gradient-seven, radial-gradient(at 51% 4%, hsla(12, 100%, 72%, 1) 0px, transparent 50%)) border-box,
+    var(--gradient-base, linear-gradient(#c299ff 0 100%)) border-box;
+
+  opacity: calc((var(--edge-proximity) - var(--color-sensitivity)) / (100 - var(--color-sensitivity)));
+
+  mask-image:
+    conic-gradient(
+      from var(--cursor-angle) at center,
+      black calc(var(--cone-spread) * 1%),
+      transparent calc((var(--cone-spread) + 15) * 1%),
+      transparent calc((100 - var(--cone-spread) - 15) * 1%),
+      black calc((100 - var(--cone-spread)) * 1%)
+    );
+}
+
+/* colored mesh-gradient background fill near edges */
+.border-glow-card::after {
+  border: 1px solid transparent;
+  background:
+    var(--gradient-one, radial-gradient(at 80% 55%, hsla(268, 100%, 76%, 1) 0px, transparent 50%)) padding-box,
+    var(--gradient-two, radial-gradient(at 69% 34%, hsla(349, 100%, 74%, 1) 0px, transparent 50%)) padding-box,
+    var(--gradient-three, radial-gradient(at 8% 6%, hsla(136, 100%, 78%, 1) 0px, transparent 50%)) padding-box,
+    var(--gradient-four, radial-gradient(at 41% 38%, hsla(192, 100%, 64%, 1) 0px, transparent 50%)) padding-box,
+    var(--gradient-five, radial-gradient(at 86% 85%, hsla(186, 100%, 74%, 1) 0px, transparent 50%)) padding-box,
+    var(--gradient-six, radial-gradient(at 82% 18%, hsla(52, 100%, 65%, 1) 0px, transparent 50%)) padding-box,
+    var(--gradient-seven, radial-gradient(at 51% 4%, hsla(12, 100%, 72%, 1) 0px, transparent 50%)) padding-box,
+    var(--gradient-base, linear-gradient(#c299ff 0 100%)) padding-box;
+
+  mask-image:
+    linear-gradient(to bottom, black, black),
+    radial-gradient(ellipse at 50% 50%, black 40%, transparent 65%),
+    radial-gradient(ellipse at 66% 66%, black 5%, transparent 40%),
+    radial-gradient(ellipse at 33% 33%, black 5%, transparent 40%),
+    radial-gradient(ellipse at 66% 33%, black 5%, transparent 40%),
+    radial-gradient(ellipse at 33% 66%, black 5%, transparent 40%),
+    conic-gradient(from var(--cursor-angle) at center, transparent 5%, black 15%, black 85%, transparent 95%);
+
+  mask-composite: subtract, add, add, add, add, add;
+  opacity: calc(var(--fill-opacity, 0.5) * (var(--edge-proximity) - var(--color-sensitivity)) / (100 - var(--color-sensitivity)));
+  mix-blend-mode: soft-light;
+}
+
+/* outer glow layer */
+.border-glow-card > .edge-light {
+  inset: calc(var(--glow-padding) * -1);
+  pointer-events: none;
+  z-index: 1;
+
+  mask-image:
+    conic-gradient(
+      from var(--cursor-angle) at center, black 2.5%, transparent 10%, transparent 90%, black 97.5%
+    );
+
+  opacity: calc((var(--edge-proximity) - var(--edge-sensitivity)) / (100 - var(--edge-sensitivity)));
+  mix-blend-mode: plus-lighter;
+}
+
+.border-glow-card > .edge-light::before {
+  content: "";
+  position: absolute;
+  inset: var(--glow-padding);
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 1px var(--glow-color, hsl(40deg 80% 80% / 100%)),
+    inset 0 0 1px 0 var(--glow-color-60, hsl(40deg 80% 80% / 60%)),
+    inset 0 0 3px 0 var(--glow-color-50, hsl(40deg 80% 80% / 50%)),
+    inset 0 0 6px 0 var(--glow-color-40, hsl(40deg 80% 80% / 40%)),
+    inset 0 0 15px 0 var(--glow-color-30, hsl(40deg 80% 80% / 30%)),
+    inset 0 0 25px 2px var(--glow-color-20, hsl(40deg 80% 80% / 20%)),
+    inset 0 0 50px 2px var(--glow-color-10, hsl(40deg 80% 80% / 10%)),
+    0 0 1px 0 var(--glow-color-60, hsl(40deg 80% 80% / 60%)),
+    0 0 3px 0 var(--glow-color-50, hsl(40deg 80% 80% / 50%)),
+    0 0 6px 0 var(--glow-color-40, hsl(40deg 80% 80% / 40%)),
+    0 0 15px 0 var(--glow-color-30, hsl(40deg 80% 80% / 30%)),
+    0 0 25px 2px var(--glow-color-20, hsl(40deg 80% 80% / 20%)),
+    0 0 50px 2px var(--glow-color-10, hsl(40deg 80% 80% / 10%));
+}
+
+.border-glow-inner {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: auto;
+  z-index: 1;
+}
+
+
+
+===== FILE: components\BorderGlow.tsx =====
+"use client";
+
+import { useRef, useCallback, useEffect, type ReactNode } from 'react';
+import './BorderGlow.css';
+
+interface BorderGlowProps {
+  children?: ReactNode;
+  className?: string;
+  edgeSensitivity?: number;
+  glowColor?: string;
+  backgroundColor?: string;
+  borderRadius?: number;
+  glowRadius?: number;
+  glowIntensity?: number;
+  coneSpread?: number;
+  animated?: boolean;
+  colors?: string[];
+  fillOpacity?: number;
+}
+
+function parseHSL(hslStr: string) {
+  const match = hslStr.match(/([\d.]+)\s*([\d.]+)%?\s*([\d.]+)%?/);
+  if (!match) return { h: 221, s: 83, l: 53 }; // Bleu TechStratix par défaut
+  return { h: parseFloat(match[1]), s: parseFloat(match[2]), l: parseFloat(match[3]) };
+}
+
+function buildGlowVars(glowColor: string, intensity: number) {
+  const { h, s, l } = parseHSL(glowColor);
+  const base = `${h}deg ${s}% ${l}%`;
+  const opacities = [100, 60, 50, 40, 30, 20, 10];
+  const keys = ['', '-60', '-50', '-40', '-30', '-20', '-10'];
+  const vars: Record<string, string> = {};
+  for (let i = 0; i < opacities.length; i++) {
+    vars[`--glow-color${keys[i]}`] = `hsl(${base} / ${Math.min(opacities[i] * intensity, 100)}%)`;
+  }
+  return vars;
+}
+
+const GRADIENT_POSITIONS = ['80% 55%', '69% 34%', '8% 6%', '41% 38%', '86% 85%', '82% 18%', '51% 4%'];
+const GRADIENT_KEYS = ['--gradient-one', '--gradient-two', '--gradient-three', '--gradient-four', '--gradient-five', '--gradient-six', '--gradient-seven'];
+const COLOR_MAP = [0, 1, 2, 0, 1, 2, 1];
+
+function buildGradientVars(colors: string[]) {
+  const vars: Record<string, string> = {};
+  for (let i = 0; i < 7; i++) {
+    const c = colors[Math.min(COLOR_MAP[i], colors.length - 1)];
+    vars[GRADIENT_KEYS[i]] = `radial-gradient(at ${GRADIENT_POSITIONS[i]}, ${c} 0px, transparent 50%)`;
+  }
+  vars['--gradient-base'] = `linear-gradient(${colors[0]} 0 100%)`;
+  return vars;
+}
+
+function isLightColor(color: string) {
+  const value = color.trim().replace('#', '');
+  if (!/^[\da-f]{3}([\da-f]{3})?$/i.test(value)) return false;
+  const hex = value.length === 3 ? value.split('').map(char => char + char).join('') : value;
+  const red = parseInt(hex.slice(0, 2), 16);
+  const green = parseInt(hex.slice(2, 4), 16);
+  const blue = parseInt(hex.slice(4, 6), 16);
+  return red * 0.2126 + green * 0.7152 + blue * 0.0722 > 180;
+}
+
+const BorderGlow: React.FC<BorderGlowProps> = ({
+  children, className = '', edgeSensitivity = 30, glowColor = '221 83% 53%', // Bleu TechStratix
+  backgroundColor = '#ffffff', borderRadius = 24, glowRadius = 30, glowIntensity = 0.8,
+  coneSpread = 20, animated = false, colors = ['#2563EB', '#60A5FA', '#9CA3AF'], fillOpacity = 0.1,
+}) => {
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const getCenterOfElement = useCallback((el: HTMLElement) => {
+    const { width, height } = el.getBoundingClientRect();
+    return [width / 2, height / 2];
+  }, []);
+
+  const getEdgeProximity = useCallback((el: HTMLElement, x: number, y: number) => {
+    const [cx, cy] = getCenterOfElement(el);
+    const dx = x - cx; const dy = y - cy;
+    let kx = Infinity; let ky = Infinity;
+    if (dx !== 0) kx = cx / Math.abs(dx);
+    if (dy !== 0) ky = cy / Math.abs(dy);
+    return Math.min(Math.max(1 / Math.min(kx, ky), 0), 1);
+  }, [getCenterOfElement]);
+
+  const getCursorAngle = useCallback((el: HTMLElement, x: number, y: number) => {
+    const [cx, cy] = getCenterOfElement(el);
+    const dx = x - cx; const dy = y - cy;
+    if (dx === 0 && dy === 0) return 0;
+    let degrees = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+    if (degrees < 0) degrees += 360;
+    return degrees;
+  }, [getCenterOfElement]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const card = cardRef.current;
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const edge = getEdgeProximity(card, e.clientX - rect.left, e.clientY - rect.top);
+    const angle = getCursorAngle(card, e.clientX - rect.left, e.clientY - rect.top);
+    card.style.setProperty('--edge-proximity', `${(edge * 100).toFixed(3)}`);
+    card.style.setProperty('--cursor-angle', `${angle.toFixed(3)}deg`);
+  }, [getEdgeProximity, getCursorAngle]);
+
+  const glowVars = buildGlowVars(glowColor, glowIntensity);
+  const lightSurface = isLightColor(backgroundColor);
+
+  return (
+    <div
+      ref={cardRef}
+      onPointerMove={handlePointerMove}
+      className={`border-glow-card${lightSurface ? ' border-glow-card--light' : ''} ${className}`}
+      style={{
+        '--card-bg': backgroundColor, '--edge-sensitivity': edgeSensitivity, '--border-radius': `${borderRadius}px`,
+        '--glow-padding': `${glowRadius}px`, '--cone-spread': coneSpread, '--fill-opacity': fillOpacity,
+        ...glowVars, ...buildGradientVars(colors),
+      } as React.CSSProperties}
+    >
+      <span className="edge-light" />
+      <div className="border-glow-inner h-full">
+        {children}
+      </div>
+    </div>
+  );
+};
+
+export default BorderGlow;
+
+
+===== FILE: components\GooeyNav.css =====
+.gooey-nav-container {
+  position: relative;
+}
+
+.gooey-nav-container nav {
+  display: flex;
+  position: relative;
+}
+
+.gooey-nav-container nav ul {
+  display: flex;
+  gap: 0.5em;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  position: relative;
+  z-index: 3;
+}
+
+/* Le style des liens de base (Gris) */
+.gooey-nav-container nav ul li {
+  border-radius: 100vw;
+  position: relative;
+  cursor: pointer;
+  color: #6B7280;
+  font-weight: 500;
+  transition: color 0.3s ease;
+}
+
+.gooey-nav-container nav ul li a {
+  display: inline-block;
+  padding: 0.5em 1.2em;
+  text-decoration: none;
+}
+
+/* On cache l'élément actif par défaut car la "pilule" le remplacera visuellement */
+.gooey-nav-container nav ul li.active {
+  color: transparent; 
+}
+
+.gooey-nav-container .effect {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* ======================================== */
+/* 1. LA PILULE QUI COULISSE (Le fond bleu) */
+/* ======================================== */
+.gooey-nav-container .effect.filter {
+  background: #EFF6FF; /* Le bleu très doux qui enveloppe le texte */
+  border-radius: 100vw;
+  z-index: 1;
+  transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1); /* Effet de glissement très fluide */
+}
+
+/* ======================================== */
+/* 2. LE TEXTE ACTIF (Bleu vif)             */
+/* ======================================== */
+.gooey-nav-container .effect.text {
+  display: grid;
+  place-items: center;
+  z-index: 2;
+  color: #2563EB; /* La couleur du texte sélectionné */
+  font-weight: 600;
+  transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* ======================================== */
+/* 3. LES PARTICULES (L'explosion au clic)  */
+/* ======================================== */
+.particle, .point {
+  display: block;
+  opacity: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 100%;
+  transform-origin: center;
+}
+
+.particle {
+  --time: 5s;
+  position: absolute;
+  top: calc(50% - 10px);
+  left: calc(50% - 10px);
+  animation: particle calc(var(--time)) ease 1 -350ms;
+}
+
+.point {
+  background: #2563EB; /* Couleur des particules */
+  opacity: 1;
+  animation: point calc(var(--time)) ease 1 -350ms;
+}
+
+@keyframes particle {
+  0% { transform: rotate(0deg) translate(calc(var(--start-x)), calc(var(--start-y))); opacity: 1; }
+  70% { transform: rotate(calc(var(--rotate) * 0.5)) translate(calc(var(--end-x) * 1.2), calc(var(--end-y) * 1.2)); opacity: 1; }
+  85% { transform: rotate(calc(var(--rotate) * 0.66)) translate(calc(var(--end-x)), calc(var(--end-y))); opacity: 1; }
+  100% { transform: rotate(calc(var(--rotate) * 1.2)) translate(calc(var(--end-x) * 0.5), calc(var(--end-y) * 0.5)); opacity: 1; }
+}
+
+@keyframes point {
+  0% { transform: scale(0); opacity: 0; }
+  25% { transform: scale(calc(var(--scale) * 0.25)); }
+  38% { opacity: 1; }
+  65% { transform: scale(var(--scale)); opacity: 1; }
+  85% { transform: scale(var(--scale)); opacity: 1; }
+  100% { transform: scale(0); opacity: 0; }
+}
+
+
+===== FILE: components\GooeyNav.tsx =====
+"use client";
+
+import { useRef, useEffect, useState } from 'react';
+import './GooeyNav.css';
+
+interface GooeyNavProps {
+  items: { label: string; href: string }[];
+  animationTime?: number;
+  particleCount?: number;
+  particleDistances?: number[];
+  particleR?: number;
+  timeVariance?: number;
+  colors?: number[];
+  initialActiveIndex?: number;
+}
+
+const GooeyNav = ({
+  items,
+  animationTime = 600,
+  particleCount = 15,
+  particleDistances = [90, 10],
+  particleR = 100,
+  timeVariance = 300,
+  colors = [1, 2, 3, 1, 2, 3, 1, 4],
+  initialActiveIndex = 0
+}: GooeyNavProps) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLUListElement>(null);
+  const filterRef = useRef<HTMLSpanElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [activeIndex, setActiveIndex] = useState(initialActiveIndex);
+
+  const noise = (n = 1) => n / 2 - Math.random() * n;
+
+  const getXY = (distance: number, pointIndex: number, totalPoints: number) => {
+    const angle = ((360 + noise(8)) / totalPoints) * pointIndex * (Math.PI / 180);
+    return [distance * Math.cos(angle), distance * Math.sin(angle)];
+  };
+
+  const createParticle = (i: number, t: number, d: number[], r: number) => {
+    let rotate = noise(r / 10);
+    return {
+      start: getXY(d[0], particleCount - i, particleCount),
+      end: getXY(d[1] + noise(7), particleCount - i, particleCount),
+      time: t,
+      scale: 1 + noise(0.2),
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rotate: rotate > 0 ? (rotate + r / 20) * 10 : (rotate - r / 20) * 10
+    };
+  };
+
+  const makeParticles = (element: HTMLElement) => {
+    const d = particleDistances;
+    const r = particleR;
+    const bubbleTime = animationTime * 2 + timeVariance;
+    element.style.setProperty('--time', `${bubbleTime}ms`);
+
+    for (let i = 0; i < particleCount; i++) {
+      const t = animationTime * 2 + noise(timeVariance * 2);
+      const p = createParticle(i, t, d, r);
+      element.classList.remove('active');
+
+      setTimeout(() => {
+        const particle = document.createElement('span');
+        const point = document.createElement('span');
+        particle.classList.add('particle');
+        particle.style.setProperty('--start-x', `${p.start[0]}px`);
+        particle.style.setProperty('--start-y', `${p.start[1]}px`);
+        particle.style.setProperty('--end-x', `${p.end[0]}px`);
+        particle.style.setProperty('--end-y', `${p.end[1]}px`);
+        particle.style.setProperty('--time', `${p.time}ms`);
+        particle.style.setProperty('--scale', `${p.scale}`);
+        particle.style.setProperty('--color', `var(--color-${p.color}, white)`);
+        particle.style.setProperty('--rotate', `${p.rotate}deg`);
+
+        point.classList.add('point');
+        particle.appendChild(point);
+        element.appendChild(particle);
+        requestAnimationFrame(() => {
+          element.classList.add('active');
+        });
+        setTimeout(() => {
+          try {
+            element.removeChild(particle);
+          } catch {
+            // Do nothing
+          }
+        }, t);
+      }, 30);
+    }
+  };
+
+  const updateEffectPosition = (element: HTMLElement) => {
+    if (!containerRef.current || !filterRef.current || !textRef.current) return;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const pos = element.getBoundingClientRect();
+
+    const styles = {
+      left: `${pos.x - containerRect.x}px`,
+      top: `${pos.y - containerRect.y}px`,
+      width: `${pos.width}px`,
+      height: `${pos.height}px`
+    };
+    Object.assign(filterRef.current.style, styles);
+    Object.assign(textRef.current.style, styles);
+    textRef.current.innerText = element.innerText;
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>, index: number) => {
+    const liEl = e.currentTarget.parentElement;
+    if (!liEl || activeIndex === index) return;
+
+    setActiveIndex(index);
+    updateEffectPosition(liEl);
+
+    if (filterRef.current) {
+      const particles = filterRef.current.querySelectorAll('.particle');
+      particles.forEach(p => filterRef.current?.removeChild(p));
+    }
+
+    if (textRef.current) {
+      textRef.current.classList.remove('active');
+      void textRef.current.offsetWidth;
+      textRef.current.classList.add('active');
+    }
+
+    if (filterRef.current) {
+      makeParticles(filterRef.current);
+    }
+  };
+
+  useEffect(() => {
+    if (!navRef.current || !containerRef.current) return;
+    const activeLi = navRef.current.querySelectorAll('li')[activeIndex];
+    if (activeLi) {
+      updateEffectPosition(activeLi);
+      textRef.current?.classList.add('active');
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      const currentActiveLi = navRef.current?.querySelectorAll('li')[activeIndex];
+      if (currentActiveLi) {
+        updateEffectPosition(currentActiveLi);
+      }
+    });
+
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, [activeIndex]);
+
+  return (
+    <div className="gooey-nav-container" ref={containerRef}>
+      <nav>
+        <ul ref={navRef}>
+          {items.map((item, index) => (
+            <li key={index} className={activeIndex === index ? 'active' : ''}>
+              <a href={item.href} onClick={e => handleClick(e, index)}>
+                {item.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <span className="effect filter" ref={filterRef} />
+      <span className="effect text" ref={textRef} />
+    </div>
+  );
+};
+
+export default GooeyNav;
+
+
+===== FILE: components\Hyperspeed.css =====
+#lights {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+#lights canvas {
+  width: 100%;
+  height: 100%;
+  outline: none;
+}
+
+
+===== FILE: components\Hyperspeed.tsx =====
+"use client";
+
+import { useEffect, useRef } from 'react';
+import * as THREE from 'three';
+import { BloomEffect, EffectComposer, EffectPass, RenderPass, SMAAEffect, SMAAPreset } from 'postprocessing';
+import './Hyperspeed.css';
+
+export default function Hyperspeed() {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    // --- CONFIGURATION COULEURS TECHSTRATIX ---
+    const options = {
+      length: 400,
+      roadWidth: 10,
+      islandWidth: 2,
+      lanesPerRoad: 3,
+      fov: 90,
+      fovSpeedUp: 150,
+      speedUp: 2,
+      carLightsFade: 0.4,
+      totalSideLightSticks: 50,
+      lightPairsPerRoadWay: 50,
+      shoulderLinesWidthPercentage: 0.05,
+      brokenLinesWidthPercentage: 0.1,
+      brokenLinesLengthPercentage: 0.5,
+      lightStickWidth: [0.12, 0.5],
+      lightStickHeight: [1.3, 1.7],
+      movingAwaySpeed: [60, 80],
+      movingCloserSpeed: [-120, -160],
+      carLightsLength: [400 * 0.05, 400 * 0.15],
+      carLightsRadius: [0.05, 0.14],
+      carWidthPercentage: [0.3, 0.5],
+      carShiftX: [-0.2, 0.2],
+      carFloorSeparation: [0.05, 1],
+      colors: {
+        roadColor: 0x060B14, // Fond sombre TechStratix
+        islandColor: 0x060B14,
+        background: 0x060B14,
+        shoulderLines: 0x101D42,
+        brokenLines: 0x101D42,
+        leftCars: [0x2563EB, 0x60A5FA, 0x1D4ED8], // Bleus vifs
+        rightCars: [0x9CA3AF, 0xE5E7EB, 0x4B5563], // Argent/Gris
+        sticks: 0x2563EB // Bâtons lumineux bleus
+      }
+    };
+
+    // --- LE MOTEUR THREE.JS SIMPLIFIÉ POUR L'ARRIÈRE-PLAN ---
+    const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+    renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    containerRef.current.appendChild(renderer.domElement);
+
+    const camera = new THREE.PerspectiveCamera(options.fov, containerRef.current.clientWidth / containerRef.current.clientHeight, 0.1, 10000);
+    camera.position.set(0, 8, -5);
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(options.colors.background, options.length * 0.2, options.length * 500);
+
+    // Effets de Post-Processing (Glow)
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(new EffectPass(camera, new BloomEffect({ luminanceThreshold: 0.2, luminanceSmoothing: 0, resolutionScale: 1 })));
+
+    // Simulation de particules lumineuses simples pour l'effet "Hyperspeed"
+    const geometry = new THREE.BufferGeometry();
+    const vertices = [];
+    for ( let i = 0; i < 2000; i ++ ) {
+        vertices.push( (Math.random() - 0.5) * 200, (Math.random() - 0.5) * 50, -Math.random() * options.length * 2 );
+    }
+    geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( vertices, 3 ) );
+    
+    const material = new THREE.PointsMaterial({ color: options.colors.sticks, size: 0.5, transparent: true, opacity: 0.8 });
+    const stars = new THREE.Points( geometry, material );
+    scene.add( stars );
+
+    let animationFrameId: number;
+    let speed = 2;
+
+    const animate = () => {
+      animationFrameId = requestAnimationFrame(animate);
+      
+      // Animation hyperspeed
+      const positions = stars.geometry.attributes.position.array as Float32Array;
+      for(let i = 2; i < positions.length; i += 3) {
+          positions[i] += speed;
+          if (positions[i] > 100) positions[i] = -options.length * 2;
+      }
+      stars.geometry.attributes.position.needsUpdate = true;
+
+      composer.render();
+    };
+    animate();
+
+    const handleResize = () => {
+      if(!containerRef.current) return;
+      camera.aspect = containerRef.current.clientWidth / containerRef.current.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
+      composer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('resize', handleResize);
+      renderer.dispose();
+      if(containerRef.current?.contains(renderer.domElement)) {
+        containerRef.current.removeChild(renderer.domElement);
+      }
+    };
+  }, []);
+
+  return <div id="lights" ref={containerRef}></div>;
+}
+
+
+===== FILE: components\Lightfall.css =====
+.lightfall-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+
+===== FILE: components\Lightfall.tsx =====
+"use client";
+import React, { useEffect, useRef } from 'react';
+import { Renderer, Program, Mesh, Triangle } from 'ogl';
+import './Lightfall.css';
+
+export interface LightfallProps {
+  className?: string;
+  dpr?: number;
+  paused?: boolean;
+  colors?: string[];
+  backgroundColor?: string;
+  speed?: number;
+  streakCount?: number;
+  streakWidth?: number;
+  streakLength?: number;
+  glow?: number;
+  density?: number;
+  twinkle?: number;
+  zoom?: number;
+  backgroundGlow?: number;
+  opacity?: number;
+  mouseInteraction?: boolean;
+  mouseStrength?: number;
+  mouseRadius?: number;
+  mouseDampening?: number;
+  lightMode?: boolean;
+  mixBlendMode?: string;
+}
+
+type RGB = [number, number, number];
+
+const MAX_COLORS = 8;
+
+const hexToRGB = (hex: string): RGB => {
+  const c = hex.replace('#', '').padEnd(6, '0');
+  const r = parseInt(c.slice(0, 2), 16) / 255;
+  const g = parseInt(c.slice(2, 4), 16) / 255;
+  const b = parseInt(c.slice(4, 6), 16) / 255;
+  return [r, g, b];
+};
+
+const prepColors = (input?: string[]) => {
+  const base = (input && input.length ? input : ['#A6C8FF', '#5227FF', '#FF9FFC']).slice(0, MAX_COLORS);
+  const count = base.length;
+  const arr: RGB[] = [];
+  for (let i = 0; i < MAX_COLORS; i++) arr.push(hexToRGB(base[Math.min(i, base.length - 1)]));
+  const avg: RGB = [0, 0, 0];
+  for (let i = 0; i < count; i++) {
+    avg[0] += arr[i][0];
+    avg[1] += arr[i][1];
+    avg[2] += arr[i][2];
+  }
+  avg[0] /= count;
+  avg[1] /= count;
+  avg[2] /= count;
+  return { arr, count, avg };
+};
+
+const vertex = `
+attribute vec2 position;
+attribute vec2 uv;
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = vec4(position, 0.0, 1.0);
+}
+`;
+
+const fragment = `
+precision highp float;
+
+uniform vec3  iResolution;
+uniform vec2  iMouse;
+uniform float iTime;
+
+uniform vec3  uColor0;
+uniform vec3  uColor1;
+uniform vec3  uColor2;
+uniform vec3  uColor3;
+uniform vec3  uColor4;
+uniform vec3  uColor5;
+uniform vec3  uColor6;
+uniform vec3  uColor7;
+uniform int   uColorCount;
+
+uniform vec3  uBgColor;
+uniform vec3  uMouseColor;
+uniform float uSpeed;
+uniform int   uStreakCount;
+uniform float uStreakWidth;
+uniform float uStreakLength;
+uniform float uGlow;
+uniform float uDensity;
+uniform float uTwinkle;
+uniform float uZoom;
+uniform float uBgGlow;
+uniform float uOpacity;
+uniform float uMouseEnabled;
+uniform float uMouseStrength;
+uniform float uMouseRadius;
+uniform float uLightMode;
+
+varying vec2 vUv;
+
+vec3 palette(float h) {
+  int count = uColorCount;
+  if (count < 1) count = 1;
+  int idx = int(floor(clamp(h, 0.0, 0.999999) * float(count)));
+  if (idx <= 0) return uColor0;
+  if (idx == 1) return uColor1;
+  if (idx == 2) return uColor2;
+  if (idx == 3) return uColor3;
+  if (idx == 4) return uColor4;
+  if (idx == 5) return uColor5;
+  if (idx == 6) return uColor6;
+  return uColor7;
+}
+
+vec3 tanhv(vec3 x) {
+  vec3 e = exp(-2.0 * x);
+  return (1.0 - e) / (1.0 + e);
+}
+
+vec2 sceneC(vec2 frag, vec2 r) {
+  vec2 P = (frag + frag - r) / r.x;
+  float z = 0.0;
+  float d = 1e3;
+  vec4 O = vec4(0.0);
+  for (int k = 0; k < 39; k++) {
+    if (d <= 1e-4) break;
+    O = z * normalize(vec4(P, uZoom, 0.0)) - vec4(0.0, 4.0, 1.0, 0.0) / 4.5;
+    d = 1.0 - sqrt(length(O * O));
+    z += d;
+  }
+  return vec2(O.x, atan(O.z, O.y));
+}
+
+void mainImage(out vec4 o, vec2 C) {
+  vec2 r = iResolution.xy;
+  vec2 uv0 = (C + C - r) / r.x;
+  float T = 0.1 * iTime * uSpeed + 9.0;
+  float angRings = max(1.0, floor(6.28318530718 * max(uDensity, 0.05) + 0.5));
+  vec2 Y = vec2(5e-3, 6.28318530718 / angRings);
+
+  vec2 c0 = sceneC(C, r);
+  vec2 cdx = sceneC(C + vec2(1.0, 0.0), r);
+  vec2 cdy = sceneC(C + vec2(0.0, 1.0), r);
+  vec2 dCx = cdx - c0;
+  vec2 dCy = cdy - c0;
+  dCx.y -= 6.28318530718 * floor(dCx.y / 6.28318530718 + 0.5);
+  dCy.y -= 6.28318530718 * floor(dCy.y / 6.28318530718 + 0.5);
+  vec2 fw = abs(dCx) + abs(dCy);
+  C = c0;
+
+  vec2 P = vec2(2.0, 1.0) * uv0 - (r / r.x) * vec2(0.0, 1.0);
+  vec4 O = uLightMode > 0.5
+    ? vec4(0.0)
+    : vec4(uBgColor * 90.0 * uBgGlow / (1e3 * dot(P, P) + 6.0), 0.0);
+
+  float mGlow = 0.0;
+  if (uMouseEnabled > 0.5) {
+    vec2 mN = (iMouse + iMouse - r) / r.x;
+    float md = length(uv0 - mN);
+    mGlow = exp(-md * md / max(uMouseRadius * uMouseRadius, 1e-4)) * uMouseStrength;
+    O.rgb += uMouseColor * mGlow * 0.25;
+  }
+
+  float zr = 5e-4 * uStreakWidth;
+  vec2 rr = vec2(max(length(fw), 1e-5));
+  float tail = 19.0 / max(uStreakLength, 0.05);
+
+  for (int m = 0; m < 16; m++) {
+    if (m >= uStreakCount) break;
+    float jf = float(m) + 1.0;
+    float ic = fract(sin(dot(vec2(jf, floor(C.x / Y.x + 0.5)), vec2(7.0, 11.0)) * 73.0));
+    vec2 Pp = C - (T + T * ic) * vec2(0.0, 1.0);
+    Pp -= floor(Pp / Y + 0.5) * Y;
+    float h = fract(8663.0 * ic);
+    vec3 col = palette(h);
+    float weight = mix(1.5, 1.0 + sin(T + 7.0 * h + 4.0), uTwinkle);
+    weight *= (1.0 + mGlow * 2.0);
+    vec2 inner = vec2(length(max(Pp, vec2(-1.0, 0.0))), length(Pp) - zr) - zr;
+    vec2 sm = vec2(1.0) - smoothstep(-rr, rr, inner);
+    O.rgb += dot(sm, vec2(exp(tail * Pp.y), 3.0)) * col * weight;
+    C.x += Y.x / 8.0;
+  }
+
+  vec3 colr = sqrt(tanhv(max(O.rgb * uGlow - vec3(0.04, 0.08, 0.02), 0.0)));
+if (uLightMode > 0.5) {
+  float peak = max(colr.r, max(colr.g, colr.b));
+  float coverage = smoothstep(0.035, 0.58, peak) * uOpacity;
+  vec3 chroma = clamp(colr / max(peak, 1e-4), 0.0, 1.0);
+  chroma = pow(chroma, vec3(1.35));
+  float chromaPeak = max(chroma.r, max(chroma.g, chroma.b));
+  chroma /= max(chromaPeak, 1e-4);
+  o = vec4(mix(vec3(1.0), chroma, coverage * 0.94), 1.0);
+} else {
+    o = vec4(colr, uOpacity);
+  }
+}
+
+void main() {
+  vec4 color;
+  mainImage(color, vUv * iResolution.xy);
+  gl_FragColor = color;
+}
+`;
+
+const Lightfall: React.FC<LightfallProps> = ({
+  className,
+  dpr,
+  paused = false,
+  colors = ['#A6C8FF', '#5227FF', '#FF9FFC'],
+  backgroundColor = '#0A29FF',
+  speed = 0.5,
+  streakCount = 2,
+  streakWidth = 1,
+  streakLength = 1,
+  glow = 1,
+  density = 0.6,
+  twinkle = 1,
+  zoom = 3,
+  backgroundGlow = 0.5,
+  opacity = 1,
+  mouseInteraction = true,
+  mouseStrength = 0.5,
+  mouseRadius = 1,
+  mouseDampening = 0.15,
+  lightMode = false,
+  mixBlendMode
+}) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const programRef = useRef<Program | null>(null);
+  const meshRef = useRef<Mesh | null>(null);
+  const geometryRef = useRef<Triangle | null>(null);
+  const rendererRef = useRef<Renderer | null>(null);
+  const mouseTargetRef = useRef<[number, number]>([0, 0]);
+  const lastTimeRef = useRef(0);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const renderer = new Renderer({
+      dpr: dpr ?? (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1),
+      alpha: true,
+      antialias: true
+    });
+    rendererRef.current = renderer;
+    const gl = renderer.gl;
+    const canvas = gl.canvas as HTMLCanvasElement;
+
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.display = 'block';
+    container.appendChild(canvas);
+
+    const { arr, count, avg } = prepColors(colors);
+
+    const uniforms = {
+      iResolution: { value: [gl.drawingBufferWidth, gl.drawingBufferHeight, 1] },
+      iMouse: { value: [0, 0] },
+      iTime: { value: 0 },
+      uColor0: { value: arr[0] },
+      uColor1: { value: arr[1] },
+      uColor2: { value: arr[2] },
+      uColor3: { value: arr[3] },
+      uColor4: { value: arr[4] },
+      uColor5: { value: arr[5] },
+      uColor6: { value: arr[6] },
+      uColor7: { value: arr[7] },
+      uColorCount: { value: count },
+      uBgColor: { value: hexToRGB(backgroundColor) },
+      uMouseColor: { value: avg },
+      uSpeed: { value: speed },
+      uStreakCount: { value: Math.max(1, Math.min(16, Math.round(streakCount))) },
+      uStreakWidth: { value: streakWidth },
+      uStreakLength: { value: streakLength },
+      uGlow: { value: glow },
+      uDensity: { value: density },
+      uTwinkle: { value: twinkle },
+      uZoom: { value: zoom },
+      uBgGlow: { value: backgroundGlow },
+      uOpacity: { value: opacity },
+      uMouseEnabled: { value: mouseInteraction ? 1 : 0 },
+      uMouseStrength: { value: mouseStrength },
+      uMouseRadius: { value: mouseRadius },
+      uLightMode: { value: lightMode ? 1 : 0 }
+    };
+
+    const program = new Program(gl, { vertex, fragment, uniforms });
+    programRef.current = program;
+
+    const geometry = new Triangle(gl);
+    geometryRef.current = geometry;
+    const mesh = new Mesh(gl, { geometry, program });
+    meshRef.current = mesh;
+
+    const resize = () => {
+      const rect = container.getBoundingClientRect();
+      renderer.setSize(rect.width, rect.height);
+      uniforms.iResolution.value = [gl.drawingBufferWidth, gl.drawingBufferHeight, 1];
+    };
+
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(container);
+
+    const onPointerMove = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const scale = renderer.dpr || 1;
+      const x = (e.clientX - rect.left) * scale;
+      const y = (rect.height - (e.clientY - rect.top)) * scale;
+      mouseTargetRef.current = [x, y];
+      if (mouseDampening <= 0) {
+        uniforms.iMouse.value = [x, y];
+      }
+    };
+    if (mouseInteraction) {
+      canvas.addEventListener('pointermove', onPointerMove);
+    }
+
+    const loop = (t: number) => {
+      rafRef.current = requestAnimationFrame(loop);
+      uniforms.iTime.value = t * 0.001;
+      if (mouseDampening > 0) {
+        if (!lastTimeRef.current) lastTimeRef.current = t;
+        const dt = (t - lastTimeRef.current) / 1000;
+        lastTimeRef.current = t;
+        const tau = Math.max(1e-4, mouseDampening);
+        let factor = 1 - Math.exp(-dt / tau);
+        if (factor > 1) factor = 1;
+        const target = mouseTargetRef.current;
+        const cur = uniforms.iMouse.value as number[];
+        cur[0] += (target[0] - cur[0]) * factor;
+        cur[1] += (target[1] - cur[1]) * factor;
+      } else {
+        lastTimeRef.current = t;
+      }
+      if (!paused && programRef.current && meshRef.current) {
+        try {
+          renderer.render({ scene: meshRef.current });
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    };
+    rafRef.current = requestAnimationFrame(loop);
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (mouseInteraction) canvas.removeEventListener('pointermove', onPointerMove);
+      ro.disconnect();
+      if (canvas.parentElement === container) {
+        container.removeChild(canvas);
+      }
+      const callIfFn = (obj: unknown, key: string) => {
+        const fn = obj && (obj as Record<string, unknown>)[key];
+        if (typeof fn === 'function') {
+          (fn as () => void).call(obj);
+        }
+      };
+      callIfFn(programRef.current, 'remove');
+      callIfFn(geometryRef.current, 'remove');
+      callIfFn(meshRef.current, 'remove');
+      callIfFn(rendererRef.current, 'destroy');
+      programRef.current = null;
+      geometryRef.current = null;
+      meshRef.current = null;
+      rendererRef.current = null;
+    };
+  }, [
+    dpr,
+    paused,
+    colors,
+    backgroundColor,
+    speed,
+    streakCount,
+    streakWidth,
+    streakLength,
+    glow,
+    density,
+    twinkle,
+    zoom,
+    backgroundGlow,
+    opacity,
+    mouseInteraction,
+    mouseStrength,
+    mouseRadius,
+    mouseDampening,
+    lightMode
+  ]);
+
+  return (
+    <div
+      ref={containerRef}
+      className={`lightfall-container ${className ?? ''}`}
+      style={{
+        ...(mixBlendMode && { mixBlendMode: mixBlendMode as React.CSSProperties['mixBlendMode'] })
+      }}
+    />
+  );
+};
+
+export default Lightfall;
+
+
+
+===== FILE: components\Navigation.tsx =====
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { 
+  LayoutGrid, Rocket, BookOpen, MessageSquare, Users, FileText, Settings, LogOut, 
+  Briefcase, Star, Presentation, PieChart, Calendar, Layers 
+} from "lucide-react";
+import { supabase } from "@/lib/supabase";
+
+export default function Navigation() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [userRole, setUserRole] = useState<string>("startup");
+
+  useEffect(() => {
+    const fetchRole = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+        if (data && data.role) setUserRole(data.role);
+      }
+    };
+    fetchRole();
+  }, []);
+
+  let menuItems: any[] = [];
+
+  if (userRole === "startup") {
+    menuItems = [
+      { name: "Vue d'ensemble", href: "/dashboard", icon: LayoutGrid },
+      { name: "Mon Projet", href: "/projet", icon: Rocket },
+      { name: "Formations", href: "/formations", icon: BookOpen },
+      { name: "Messages", href: "/messages", icon: MessageSquare },
+      { name: "Réseau", href: "/reseau", icon: Users },
+      { name: "Documents", href: "/docs", icon: FileText },
+      { name: "Paramètres", href: "/settings", icon: Settings },
+    ];
+  } else if (userRole === "mentor") {
+    menuItems = [
+      { name: "Vue d'ensemble", href: "/dashboard", icon: LayoutGrid },
+      { name: "Mes Startups", href: "/mes-startups", icon: Briefcase },
+      { name: "Messages", href: "/messages", icon: MessageSquare },
+      { name: "Paramètres", href: "/settings", icon: Settings },
+    ];
+  } else if (userRole === "investor") {
+    menuItems = [
+      { name: "Deal Flow", href: "/dashboard", icon: LayoutGrid },
+      { name: "Favoris", href: "/favoris", icon: Star },
+      { name: "Demo Day", href: "/demoday", icon: Presentation },
+      { name: "Messages", href: "/messages", icon: MessageSquare },
+      { name: "Paramètres", href: "/settings", icon: Settings },
+    ];
+  } else if (userRole === "admin") {
+    // LE NOUVEAU MENU ADMINISTRATEUR COMPLET
+    menuItems = [
+      { name: "Vue d'ensemble", href: "/admin", icon: PieChart },
+      { name: "Utilisateurs & Match", href: "/admin/users", icon: Users },
+      { name: "Cohortes", href: "/admin/cohortes", icon: Layers },
+      { name: "Gestion LMS", href: "/admin/lms", icon: BookOpen },
+      { name: "Événements", href: "/admin/events", icon: Calendar },
+      { name: "Rapports", href: "/admin/reports", icon: FileText },
+      { name: "Paramètres", href: "/settings", icon: Settings },
+    ];
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push("/login");
+  };
+
+  return (
+    <aside className="w-[260px] bg-[#F8FAFC] border-r border-gray-200 fixed h-full py-8 flex flex-col justify-between z-40">
+      <div>
+        <div className="flex items-center gap-3 px-8 mb-10">
+          <div className="w-7 h-7 bg-[#101D42] rounded-md flex items-center justify-center shadow-sm">
+            <span className="text-white font-serif font-bold text-sm">T</span>
+          </div>
+          <span className="text-xl font-medium text-[#101D42] tracking-tight">TechStratix</span>
+        </div>
+
+        <nav className="px-4 space-y-1">
+          {menuItems.map((item) => {
+            const isActive = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(item.href));
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                className={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all text-[14px] font-medium ${
+                  isActive 
+                    ? "bg-[#E2E8F0] text-[#101D42] shadow-sm" 
+                    : "text-[#9CA3AF] hover:text-[#101D42] hover:bg-[#F1F5F9]"
+                }`}
+              >
+                <item.icon size={18} strokeWidth={isActive ? 2 : 1.5} />
+                <span>{item.name}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+
+      <div className="px-4">
+        <button 
+          onClick={handleLogout}
+          className="w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-colors text-[14px] font-medium text-red-500 hover:bg-red-50 hover:text-red-600"
+        >
+          <LogOut size={18} strokeWidth={1.5} />
+          <span>Déconnexion</span>
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+
+===== FILE: components\StarBorder.css =====
+.star-border-container {
+  display: inline-block;
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.border-gradient-bottom {
+  position: absolute;
+  width: 300%;
+  height: 50%;
+  opacity: 0.7;
+  bottom: -12px;
+  right: -250%;
+  border-radius: 50%;
+  animation: star-movement-bottom linear infinite alternate;
+  z-index: 0;
+}
+
+.border-gradient-top {
+  position: absolute;
+  opacity: 0.7;
+  width: 300%;
+  height: 50%;
+  top: -12px;
+  left: -250%;
+  border-radius: 50%;
+  animation: star-movement-top linear infinite alternate;
+  z-index: 0;
+}
+
+.inner-content {
+  position: relative;
+  border: 1px solid #222;
+  background: #000;
+  color: white;
+  font-size: 16px;
+  text-align: center;
+  padding: 16px 26px;
+  border-radius: 20px;
+  z-index: 1;
+}
+
+@keyframes star-movement-bottom {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-100%, 0%);
+    opacity: 0;
+  }
+}
+
+@keyframes star-movement-top {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(100%, 0%);
+    opacity: 0;
+  }
+}
+
+
+
+===== FILE: components\StarBorder.tsx =====
+"use client";
+
+import React from 'react';
+import './StarBorder.css';
+
+type StarBorderProps<T extends React.ElementType> = React.ComponentPropsWithoutRef<T> & {
+  as?: T;
+  className?: string;
+  children?: React.ReactNode;
+  color?: string;
+  speed?: string;
+  thickness?: number;
+  backgroundColor?: string;
+  textColor?: string;
+  borderColor?: string;
+};
+
+const StarBorder = <T extends React.ElementType = 'button'>({
+  as,
+  className = '',
+  color = '#2563EB', // Bleu TechStratix par défaut
+  speed = '6s',
+  thickness = 1.5,
+  backgroundColor = '#101D42', // Fond Bleu Marine par défaut
+  textColor = '#ffffff',
+  borderColor = '#1e3a8a',
+  children,
+  ...rest
+}: StarBorderProps<T>) => {
+  const Component = as || 'button';
+
+  return (
+    <Component
+      className={`star-border-container ${className} hover:scale-[1.02] transition-transform`}
+      {...(rest as any)}
+      style={{
+        padding: `${thickness}px 0`,
+        ...(rest as any).style
+      }}
+    >
+      <div className="border-gradient-bottom" style={{ background: `radial-gradient(circle, ${color}, transparent 10%)`, animationDuration: speed }}></div>
+      <div className="border-gradient-top" style={{ background: `radial-gradient(circle, ${color}, transparent 10%)`, animationDuration: speed }}></div>
+      <div className="inner-content" style={{ background: backgroundColor, color: textColor, borderColor }}>
+        {children}
+      </div>
+    </Component>
+  );
+};
+
+export default StarBorder;
+
+
+===== FILE: lib\supabase.ts =====
+import { createBrowserClient } from '@supabase/ssr'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+// createBrowserClient synchronise automatiquement la connexion avec les Cookies du navigateur !
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+
+
+===== FILE: middleware.ts =====
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { NextResponse, type NextRequest } from 'next/server'
+
+export async function middleware(request: NextRequest) {
+  let response = NextResponse.next({
+    request: { headers: request.headers },
+  })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) { return request.cookies.get(name)?.value },
+        set(name: string, value: string, options: CookieOptions) {
+          request.cookies.set({ name, value, ...options })
+          response = NextResponse.next({ request: { headers: request.headers } })
+          response.cookies.set({ name, value, ...options })
+        },
+        remove(name: string, options: CookieOptions) {
+          request.cookies.set({ name, value: '', ...options })
+          response = NextResponse.next({ request: { headers: request.headers } })
+          response.cookies.set({ name, value: '', ...options })
+        },
+      },
+    }
+  )
+
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Définir les routes protégées
+  const protectedRoutes = ['/dashboard', '/projet', '/formations', '/messages', '/reseau', '/docs', '/settings', '/admin']
+  const isProtectedRoute = protectedRoutes.some(route => request.nextUrl.pathname.startsWith(route))
+
+  if (isProtectedRoute) {
+    // 1. Si non connecté -> Dehors
+    if (!user) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+
+    // 2. Si connecté, on vérifie le statut en base de données
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('status')
+      .eq('id', user.id)
+      .single()
+
+    // 3. Si le statut n'est pas "approved" -> On détruit la session et on le renvoie à l'accueil
+    if (profile?.status !== 'approved') {
+      await supabase.auth.signOut()
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+  }
+
+  return response
+}
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+}
+
+
+===== FILE: next.config.ts =====
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+};
+
+export default nextConfig;
+
+
+
+===== FILE: package.json =====
+{
+  "name": "techstratix",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.5",
+    "@supabase/supabase-js": "^2.112.3",
+    "framer-motion": "^13.1.1",
+    "lucide-react": "^1.33.0",
+    "next": "16.3.2",
+    "ogl": "^1.0.11",
+    "omniroute": "^3.8.48",
+    "postprocessing": "^6.39.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "sonner": "^2.0.8",
+    "three": "^0.185.1",
+    "three.js": "^0.77.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/three": "^0.185.4",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.2",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+
+
+
+===== FILE: postcss.config.mjs =====
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+
+export default config;
+
+
+
+===== FILE: README.md =====
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+## Getting Started
+
+First, run the development server:
+
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Learn More
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+
+
+===== FILE: tsconfig.json =====
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": ["node_modules"]
+}
+

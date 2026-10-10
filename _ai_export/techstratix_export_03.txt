@@ -1,0 +1,1229 @@
+
+
+===== FILE: app\login\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { Loader2, ArrowLeft, ShieldAlert, Rocket, Users, TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+
+// Les 3 messages qui vont tourner en boucle
+const SLIDER_MESSAGES = [
+  {
+    title: "Accélérez votre croissance.",
+    desc: "Un écosystème conçu pour structurer votre projet, monter en compétences et réussir votre levée de fonds.",
+    icon: <Rocket size={32} className="text-[#2563EB]" />
+  },
+  {
+    title: "Transmettez votre expertise.",
+    desc: "Accompagnez des fondateurs ambitieux et participez activement à l'innovation de demain.",
+    icon: <Users size={32} className="text-emerald-400" />
+  },
+  {
+    title: "Découvrez les pépites tech.",
+    desc: "Un deal flow exclusif, qualifié et organisé pour vos prochains investissements stratégiques.",
+    icon: <TrendingUp size={32} className="text-orange-400" />
+  }
+];
+
+export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  
+  const [errorType, setErrorType] = useState<"credentials" | "pending" | "under_review" | "rejected" | "suspended" | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+
+  // Gestion du Carousel Animé
+  const [currentIndex, setCurrentIndex] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % SLIDER_MESSAGES.length);
+    }, 5000); // Change le texte toutes les 5 secondes
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorType(null);
+
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      
+      if (authError || !authData.user) {
+        setErrorType("credentials");
+        setLoading(false);
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role, status, rejection_reason')
+        .eq('id', authData.user.id)
+        .single();
+
+      if (profileError || !profile) throw new Error("Profil introuvable.");
+
+      switch (profile.status) {
+        case 'approved':
+          if (profile.role === 'admin') router.push("/admin");
+          else router.push("/dashboard");
+          break;
+        case 'pending':
+          router.push("/onboarding");
+          break;
+        case 'under_review':
+          await supabase.auth.signOut();
+          setErrorType("under_review");
+          break;
+        case 'rejected':
+          await supabase.auth.signOut();
+          setRejectionReason(profile.rejection_reason || "Non spécifié.");
+          setErrorType("rejected");
+          break;
+        case 'suspended':
+          await supabase.auth.signOut();
+          setErrorType("suspended");
+          break;
+        default:
+          await supabase.auth.signOut();
+          setErrorType("credentials");
+      }
+    } catch (error: any) {
+      console.error(error);
+      setErrorType("credentials");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex bg-[#FAFAFA]">
+      
+      {/* GAUCHE : Le Formulaire */}
+      <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-8 overflow-y-auto">
+        <div className="w-full max-w-md">
+          
+          <Link href="/" className="inline-flex items-center gap-2 text-sm text-[#9CA3AF] hover:text-[#101D42] mb-10 transition-colors">
+            <ArrowLeft size={16} /> Retour à l'accueil
+          </Link>
+
+          <h1 className="text-3xl font-medium tracking-tight text-[#101D42] mb-2">Connexion</h1>
+          <p className="text-[#9CA3AF] text-sm mb-8">Accédez à votre espace sécurisé.</p>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">E-mail</label>
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" placeholder="nom@exemple.com" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Mot de passe</label>
+              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" placeholder="••••••••" />
+            </div>
+
+            {errorType && (
+              <div className="p-4 rounded-xl flex items-start gap-3 bg-red-50 border border-red-100 text-red-700 text-sm font-medium">
+                <ShieldAlert size={18} className="shrink-0 mt-0.5" />
+                <div>
+                  {errorType === "credentials" && "Identifiants incorrects ou compte inexistant."}
+                  {errorType === "under_review" && "Votre dossier est en cours d'analyse par notre équipe. Vous serez notifié très bientôt."}
+                  {errorType === "suspended" && "Votre compte a été suspendu par l'administration."}
+                  {errorType === "rejected" && <><p className="font-bold mb-1">Dossier refusé.</p><p className="text-xs text-red-600">Motif : {rejectionReason}</p></>}
+                </div>
+              </div>
+            )}
+
+            <button type="submit" disabled={loading} className="w-full bg-[#101D42] hover:bg-[#1a2b5e] text-white font-semibold py-4 rounded-full tracking-wide transition-colors text-sm disabled:opacity-70 mt-4">
+              {loading ? <Loader2 className="animate-spin mx-auto" size={20} /> : "SE CONNECTER"}
+            </button>
+          </form>
+
+          <div className="mt-8 text-center text-sm">
+            <span className="text-[#9CA3AF]">Vous n'avez pas de compte ?</span>{" "}
+            <Link href="/register" className="text-[#101D42] font-semibold hover:underline">S'inscrire</Link>
+          </div>
+        </div>
+      </div>
+
+      {/* DROITE : LE PANNEAU MARKETING ANIMÉ */}
+      <div className="hidden lg:flex w-1/2 bg-[#060B14] p-16 flex-col justify-between relative overflow-hidden">
+        
+        {/* Lumières d'arrière-plan */}
+        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-[#2563EB] opacity-20 rounded-full blur-[120px] pointer-events-none"></div>
+        <div className="absolute bottom-[-10%] left-[-10%] w-[400px] h-[400px] bg-emerald-500 opacity-10 rounded-full blur-[100px] pointer-events-none"></div>
+
+        {/* Logo en haut */}
+        <div className="relative z-10">
+          <Link href="/" className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-center shadow-lg">
+              <span className="text-white font-serif font-bold text-xl">T</span>
+            </div>
+            <span className="text-2xl font-medium tracking-tight text-white">TechStratix</span>
+          </Link>
+        </div>
+
+        {/* Textes rotatifs (Le Carousel) */}
+        <div className="relative z-10 h-64 flex flex-col justify-center">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentIndex}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+            >
+              <div className="mb-6 bg-white/5 w-16 h-16 rounded-2xl flex items-center justify-center border border-white/10 backdrop-blur-sm shadow-xl">
+                {SLIDER_MESSAGES[currentIndex].icon}
+              </div>
+              <h2 className="text-4xl lg:text-5xl font-medium text-white mb-6 leading-[1.1] tracking-tight">
+                {SLIDER_MESSAGES[currentIndex].title}
+              </h2>
+              <p className="text-gray-400 text-lg max-w-md leading-relaxed">
+                {SLIDER_MESSAGES[currentIndex].desc}
+              </p>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* Barres de progression en bas */}
+        <div className="relative z-10 flex gap-3 w-full max-w-sm">
+          {SLIDER_MESSAGES.map((_, i) => (
+            <div key={i} className="h-1 flex-1 bg-white/10 rounded-full overflow-hidden">
+              {i === currentIndex && (
+                <motion.div 
+                  initial={{ width: 0 }} 
+                  animate={{ width: "100%" }} 
+                  transition={{ duration: 5, ease: "linear" }}
+                  className="h-full bg-[#2563EB]"
+                />
+              )}
+              {i < currentIndex && <div className="h-full bg-[#2563EB]" />}
+            </div>
+          ))}
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+
+===== FILE: app\onboarding\layout.tsx =====
+export default function OnboardingLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-[#FAFAFA] flex flex-col items-center justify-center p-6">
+      <div className="w-full max-w-2xl bg-white rounded-[32px] border border-gray-200 shadow-xl overflow-hidden">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+
+===== FILE: app\onboarding\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
+import { Loader2, CheckCircle2, Rocket, Users, TrendingUp, Building2, Globe, FileText, AlertTriangle, UploadCloud, MapPin, Clock, Award, ShieldCheck, Briefcase, LogOut } from "lucide-react";import Link from "next/link";
+import BorderGlow from "@/components/BorderGlow";
+import StarBorder from "@/components/StarBorder";
+import { motion } from "framer-motion";
+
+export default function OnboardingPage() {
+  const router = useRouter();
+  
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
+  // States unifiés pour tous les formulaires
+  const [formData, setFormData] = useState({
+    name: "", // startup_name, fund_name
+    sector: "", // secteut de la startup, ou target_sectors de l'investor
+    customSector: "",
+    country: "",
+    city: "",
+    linkedin: "",
+    website: "",
+    description: "", // pitch, bio, ou investment_thesis
+    experience: 0,
+    availability: "", 
+    ticketSize: "" // Pour l'investisseur
+  });
+
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [shakeTerms, setShakeTerms] = useState(false);
+
+  // Fichiers (CV, Pitch, Justificatifs...)
+  const [mainFile, setMainFile] = useState<File | null>(null); 
+  const [secondaryFile, setSecondaryFile] = useState<File | null>(null); 
+// Fonction pour quitter proprement et reprendre plus tard
+  const handleSignOut = async () => {
+    if (confirm("Voulez-vous vraiment vous déconnecter ? Vous pourrez reprendre ce formulaire plus tard en vous reconnectant.")) {
+      setSaving(true);
+      await supabase.auth.signOut();
+      router.push("/");
+    }
+  };
+  // Verrouillage de la page
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isSubmitted && (formData.name || formData.description)) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [formData, isSubmitted]);
+
+  // Initialisation
+  useEffect(() => {
+    const initOnboarding = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return router.push("/login");
+
+      const { data: profile } = await supabase.from("profiles").select("role, status").eq("id", user.id).single();
+      if (!profile || profile.status === "approved" || profile.status === "under_review" || profile.status === "rejected") {
+        return router.push("/dashboard");
+      }
+
+      let hasCompletedData = false;
+      if (profile.role === 'startup') {
+        const { data } = await supabase.from('startup_profiles').select('profile_id').eq('profile_id', user.id).single();
+        if (data) hasCompletedData = true;
+      } else if (profile.role === 'mentor') {
+        const { data } = await supabase.from('mentor_profiles').select('profile_id').eq('profile_id', user.id).single();
+        if (data) hasCompletedData = true;
+      } else if (profile.role === 'investor') {
+        const { data } = await supabase.from('investor_profiles').select('profile_id').eq('profile_id', user.id).single();
+        if (data) hasCompletedData = true;
+      }
+
+      if (hasCompletedData) {
+        setIsSubmitted(true);
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
+      }
+
+      setUserId(user.id);
+      setUserRole(profile.role);
+      setLoading(false);
+    };
+    initOnboarding();
+  }, [router]);
+
+const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+
+    if (!termsAccepted) {
+      setShakeTerms(true);
+      setTimeout(() => setShakeTerms(false), 500);
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      if (!userId || !userRole) throw new Error("Erreur d'identification.");
+
+      const finalSector = formData.sector === "Autre" ? formData.customSector : formData.sector;
+
+      // ==========================================
+      // NOUVEAU : FONCTION D'UPLOAD SÉCURISÉ
+      // ==========================================
+      const uploadFile = async (file: File, prefix: string) => {
+        const fileExt = file.name.split('.').pop();
+        // On nettoie le nom du fichier pour éviter les bugs (espaces, accents...)
+        const cleanName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        // Le chemin : ID_UTILISATEUR / PREFIX_TIMESTAMP_NOMFICHIER
+        const filePath = `${userId}/${prefix}_${Date.now()}_${cleanName}`;
+        
+        const { error: uploadError } = await supabase.storage.from('kyc_files').upload(filePath, file);
+        if (uploadError) throw new Error(`Erreur d'upload de ${file.name} : ${uploadError.message}`);
+        return filePath; // On retourne l'adresse sécurisée
+      };
+
+      let mainFilePath = null;
+      let secondaryFilePath = null;
+
+      // On lance les vrais uploads dans Supabase Storage avant de sauvegarder le texte
+      if (mainFile) mainFilePath = await uploadFile(mainFile, 'main');
+      if (secondaryFile) secondaryFilePath = await uploadFile(secondaryFile, 'secondary');
+
+      // ==========================================
+      // SAUVEGARDE EN BASE DE DONNÉES
+      // ==========================================
+      if (formData.country || formData.city) {
+        const { error: profileError } = await supabase.from("profiles")
+          .update({ country: formData.country, city: formData.city })
+          .eq("id", userId);
+        if (profileError) throw profileError;
+      }
+
+      if (userRole === "startup") {
+        const { error } = await supabase.from("startup_profiles").insert([{
+          profile_id: userId, startup_name: formData.name, sector: finalSector, description: formData.description, website: formData.website || null,
+          pitch_deck_path: mainFilePath // LE VRAI CHEMIN !
+        }]);
+        if (error) throw error;
+      } 
+      else if (userRole === "mentor") {
+        const { error } = await supabase.from("mentor_profiles").insert([{
+          profile_id: userId, expertise_domain: finalSector, bio: formData.description, years_experience: formData.experience, 
+          linkedin_url: formData.linkedin, availability: formData.availability
+        }]);
+        if (error) throw error;
+        
+        if (mainFile && mainFilePath) await supabase.from("kyc_documents").insert([{ profile_id: userId, document_type: 'other', storage_path: mainFilePath, file_name: mainFile.name }]);
+        if (secondaryFile && secondaryFilePath) await supabase.from("kyc_documents").insert([{ profile_id: userId, document_type: 'other', storage_path: secondaryFilePath, file_name: secondaryFile.name }]);
+      } 
+      else if (userRole === "investor") {
+        const { error } = await supabase.from("investor_profiles").insert([{
+          profile_id: userId, fund_name: formData.name, target_sectors: finalSector, ticket_size: formData.ticketSize, 
+          linkedin_url: formData.linkedin, investment_thesis: formData.description
+        }]);
+        if (error) throw error;
+
+        if (mainFile && mainFilePath) await supabase.from("kyc_documents").insert([{ profile_id: userId, document_type: 'id_card', storage_path: mainFilePath, file_name: mainFile.name }]);
+      }
+
+      // Déconnexion finale
+      await supabase.auth.signOut();
+      setIsSubmitted(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    } catch (error: any) {
+      setErrorMsg("Erreur lors de l'enregistrement : " + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA]"><Loader2 className="animate-spin text-[#2563EB]" size={40} /></div>;
+
+  if (isSubmitted) {
+    return (
+      <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center p-6">
+        <div className="max-w-lg w-full bg-white rounded-[32px] p-12 text-center border border-gray-200 shadow-xl">
+          <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
+            <CheckCircle2 size={48} />
+          </div>
+          <h2 className="text-3xl font-serif text-[#101D42] mb-4">Dossier transmis</h2>
+          <p className="text-[#9CA3AF] text-sm leading-relaxed mb-10">
+            Votre dossier a bien été enregistré en toute sécurité. Il est actuellement en cours d’analyse par notre comité de sélection. Vous recevrez une notification prochainement.
+          </p>
+          <Link href="/login" className="inline-block w-full bg-[#101D42] hover:bg-[#1a2b5e] text-white font-semibold py-4 rounded-full transition-colors tracking-wide">
+            RETOURNER À L'ACCUEIL
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    
+<div className="min-h-screen bg-[#FAFAFA] pb-12"> 
+  
+
+        <div className="max-w-3xl mx-auto"> </div>
+
+
+      
+      {/* NOUVEAU : HEADER DE DÉCONNEXION */}
+      <header className="w-full bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-50 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-[#101D42] rounded flex items-center justify-center shadow-sm">
+            <span className="text-white font-serif font-bold text-lg">T</span>
+          </div>
+          <span className="text-xl font-semibold tracking-tight text-[#101D42] hidden sm:block">TechStratix</span>
+        </div>
+        
+        <button 
+          onClick={handleSignOut}
+          className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-red-600 transition-colors bg-gray-50 hover:bg-red-50 px-4 py-2 rounded-full"
+        >
+          <LogOut size={16} />
+          <span className="hidden sm:inline">Quitter et reprendre plus tard</span>
+        </button>
+      </header>
+
+      <div className="max-w-3xl mx-auto pt-12 px-4 sm:px-6">
+        
+        {/* HEADER DYNAMIQUE (Déjà existant) */}
+        <div className="text-center mb-12"></div>
+        {/* HEADER DYNAMIQUE */}
+        <div className="text-center mb-12">
+          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg ${userRole === 'startup' ? 'bg-[#101D42] text-[#2563EB]' : userRole === 'mentor' ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>
+            {userRole === "startup" && <Rocket size={32} />}
+            {userRole === "mentor" && <Users size={32} />}
+            {userRole === "investor" && <TrendingUp size={32} />}
+          </div>
+          <h1 className="text-3xl font-serif text-[#101D42] mb-3">Constitution du Dossier</h1>
+          <p className="text-[#9CA3AF] font-medium">Étape finale pour accéder à l'écosystème TechStratix.</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-8">
+          
+          {/* ======================================================== */}
+          {/* FORMULAIRE STARTUP                                       */}
+          {/* ======================================================== */}
+          {userRole === "startup" && (
+            <>
+              <BorderGlow backgroundColor="#ffffff" className="p-8">
+                <div className="flex items-center gap-3 mb-8 border-b border-[#101D42]/10 pb-4">
+                  <Building2 className="text-[#2563EB]" size={20} />
+                  <h2 className="text-xl font-medium text-[#101D42]">Identité de l'entreprise</h2>
+                </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Nom de la startup <span className="text-red-500">*</span></label>
+                    <input type="text" required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-[#2563EB] text-sm bg-white" placeholder="Ex: TechStratix Solutions" />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Secteur d'activité <span className="text-red-500">*</span></label>
+                      <select required value={formData.sector} onChange={(e) => setFormData({...formData, sector: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-[#2563EB] text-sm bg-white">
+                        <option value="" disabled>Sélectionnez un secteur</option>
+                        <option value="FinTech">FinTech</option>
+                        <option value="AgriTech">AgriTech</option>
+                        <option value="HealthTech">HealthTech</option>
+                        <option value="EdTech">EdTech</option>
+                        <option value="SaaS B2B">SaaS B2B</option>
+                        <option value="Autre">Autre (Préciser)</option>
+                      </select>
+                    </div>
+                    {formData.sector === "Autre" && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}>
+                        <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Précisez le secteur <span className="text-red-500">*</span></label>
+                        <input type="text" required value={formData.customSector} onChange={(e) => setFormData({...formData, customSector: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-[#2563EB] text-sm bg-white" />
+                      </motion.div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Pays d'opération <span className="text-red-500">*</span></label>
+                      <input type="text" required value={formData.country} onChange={(e) => setFormData({...formData, country: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-[#2563EB] text-sm bg-white" placeholder="Ex: Sénégal" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Ville principale <span className="text-red-500">*</span></label>
+                      <input type="text" required value={formData.city} onChange={(e) => setFormData({...formData, city: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-[#2563EB] text-sm bg-white" placeholder="Ex: Dakar" />
+                    </div>
+                  </div>
+                </div>
+              </BorderGlow>
+
+              <BorderGlow backgroundColor="#ffffff" className="p-8">
+                <div className="flex items-center gap-3 mb-8 border-b border-[#101D42]/10 pb-4">
+                  <FileText className="text-[#2563EB]" size={20} />
+                  <h2 className="text-xl font-medium text-[#101D42]">Le Projet & Documents</h2>
+                </div>
+                <div className="space-y-8">
+                  <div>
+                    <label className="flex justify-between text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">
+                      <span>Résumé Exécutif (Pitch) <span className="text-red-500">*</span></span>
+                      <span className={`${formData.description.length > 250 ? 'text-red-500' : 'text-[#9CA3AF]'}`}>{formData.description.length}/250</span>
+                    </label>
+                    <textarea required maxLength={250} rows={4} value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-[#2563EB] text-sm bg-white resize-none" placeholder="En une phrase claire, quel problème résolvez-vous et pour qui ?" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Pitch Deck <span className="text-red-500">*</span></label>
+                    <div className="border-2 border-dashed border-[#2563EB]/40 bg-[#EFF6FF]/50 rounded-2xl p-8 text-center hover:bg-[#EFF6FF] hover:border-[#2563EB] transition-colors cursor-pointer relative shadow-sm">
+                      <input type="file" required={!mainFile} accept=".pdf" onChange={(e) => setMainFile(e.target.files?.[0] || null)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                      <UploadCloud size={32} className="mx-auto text-[#2563EB] mb-3" />
+                      <p className="text-sm font-medium text-[#101D42] mb-1">{mainFile ? mainFile.name : "Glissez-déposez votre PDF ici"}</p>
+                    </div>
+                  </div>
+                </div>
+              </BorderGlow>
+            </>
+          )}
+
+          {/* ======================================================== */}
+          {/* FORMULAIRE MENTOR                                        */}
+          {/* ======================================================== */}
+          {userRole === "mentor" && (
+            <>
+              {/* Le code mentor précédent... */}
+              <BorderGlow backgroundColor="#ffffff" className="p-8">
+                <div className="flex items-center gap-3 mb-8 border-b border-[#101D42]/10 pb-4">
+                  <MapPin className="text-emerald-500" size={20} />
+                  <h2 className="text-xl font-medium text-[#101D42]">Identité & Vérification</h2>
+                </div>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Pays <span className="text-red-500">*</span></label>
+                      <input type="text" required value={formData.country} onChange={(e) => setFormData({...formData, country: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-emerald-500 text-sm bg-white" placeholder="Ex: Côte d'Ivoire" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Ville <span className="text-red-500">*</span></label>
+                      <input type="text" required value={formData.city} onChange={(e) => setFormData({...formData, city: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-emerald-500 text-sm bg-white" placeholder="Ex: Abidjan" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Lien LinkedIn <span className="text-red-500">*</span></label>
+                    <input type="url" required value={formData.linkedin} onChange={(e) => setFormData({...formData, linkedin: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-emerald-500 text-sm bg-white" placeholder="https://linkedin.com/in/..." />
+                  </div>
+                </div>
+              </BorderGlow>
+
+              <BorderGlow backgroundColor="#ffffff" className="p-8">
+                <div className="flex items-center gap-3 mb-8 border-b border-[#101D42]/10 pb-4">
+                  <Award className="text-emerald-500" size={20} />
+                  <h2 className="text-xl font-medium text-[#101D42]">Expertise & Parcours</h2>
+                </div>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Domaine d'expertise <span className="text-red-500">*</span></label>
+                      <select required value={formData.sector} onChange={(e) => setFormData({...formData, sector: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-emerald-500 text-sm bg-white">
+                        <option value="" disabled>Sélectionnez</option>
+                        <option value="Stratégie & Go-to-Market">Stratégie & Go-to-Market</option>
+                        <option value="Finance & Levée">Finance & Levée</option>
+                        <option value="Produit & Tech (CTO)">Produit & Tech (CTO)</option>
+                        <option value="Marketing & Growth">Marketing & Growth</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Années d'expérience <span className="text-red-500">*</span></label>
+                      <input type="number" min="0" required value={formData.experience} onChange={(e) => setFormData({...formData, experience: parseInt(e.target.value)})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-emerald-500 text-sm bg-white" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Biographie <span className="text-red-500">*</span></label>
+                    <textarea required rows={4} value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-emerald-500 text-sm bg-white resize-none" placeholder="Présentez votre parcours..." />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">CV (PDF) <span className="text-red-500">*</span></label>
+                    <div className="border-2 border-dashed border-emerald-500/40 bg-emerald-50/50 rounded-2xl p-6 text-center hover:bg-emerald-50 transition-colors cursor-pointer relative shadow-sm">
+                      <input type="file" required={!mainFile} accept=".pdf" onChange={(e) => setMainFile(e.target.files?.[0] || null)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                      <p className="text-sm font-medium text-[#101D42]">{mainFile ? mainFile.name : "Importer votre CV"}</p>
+                    </div>
+                  </div>
+                </div>
+              </BorderGlow>
+            </>
+          )}
+
+          {/* ======================================================== */}
+          {/* FORMULAIRE INVESTISSEUR                                  */}
+          {/* ======================================================== */}
+          {userRole === "investor" && (
+            <>
+              <BorderGlow backgroundColor="#ffffff" className="p-8">
+                <div className="flex items-center gap-3 mb-8 border-b border-[#101D42]/10 pb-4">
+                  <Building2 className="text-orange-500" size={20} />
+                  <h2 className="text-xl font-medium text-[#101D42]">Structure d'investissement</h2>
+                </div>
+                
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Nom du Fonds / Business Angel <span className="text-red-500">*</span></label>
+                      <input type="text" required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-orange-500 text-sm bg-white" placeholder="Ex: Africa Tech Ventures" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Ticket d'investissement <span className="text-red-500">*</span></label>
+                      <select required value={formData.ticketSize} onChange={(e) => setFormData({...formData, ticketSize: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-orange-500 text-sm bg-white">
+                        <option value="" disabled>Sélectionnez un montant</option>
+                        <option value="< 50k€">&lt; 50k€ (Pre-seed)</option>
+                        <option value="50k€ - 200k€">50k€ - 200k€ (Seed)</option>
+                        <option value="200k€ - 1M€">200k€ - 1M€ (Serie A)</option>
+                        <option value="> 1M€">&gt; 1M€ (Serie B+)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Pays du siège <span className="text-red-500">*</span></label>
+                      <input type="text" required value={formData.country} onChange={(e) => setFormData({...formData, country: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-orange-500 text-sm bg-white" placeholder="Ex: France" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Ville <span className="text-red-500">*</span></label>
+                      <input type="text" required value={formData.city} onChange={(e) => setFormData({...formData, city: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-orange-500 text-sm bg-white" placeholder="Ex: Paris" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Profil LinkedIn du Partenaire <span className="text-red-500">*</span></label>
+                    <input type="url" required value={formData.linkedin} onChange={(e) => setFormData({...formData, linkedin: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-orange-500 text-sm bg-white" placeholder="https://linkedin.com/in/..." />
+                  </div>
+                </div>
+              </BorderGlow>
+
+              <BorderGlow backgroundColor="#ffffff" className="p-8">
+                <div className="flex items-center gap-3 mb-8 border-b border-[#101D42]/10 pb-4">
+                  <Briefcase className="text-orange-500" size={20} />
+                  <h2 className="text-xl font-medium text-[#101D42]">Thèse d'investissement & KYC</h2>
+                </div>
+                
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Secteurs ciblés <span className="text-red-500">*</span></label>
+                    <input type="text" required value={formData.sector} onChange={(e) => setFormData({...formData, sector: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-orange-500 text-sm bg-white" placeholder="Ex: FinTech, SaaS, IA..." />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Thèse d'investissement (Description) <span className="text-red-500">*</span></label>
+                    <textarea required rows={4} value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-[#101D42]/15 shadow-sm focus:outline-none focus:border-orange-500 text-sm bg-white resize-none" placeholder="Expliquez brièvement votre stratégie d'investissement et la valeur que vous apportez..." />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Preuve d'Accréditation / Identité <span className="text-red-500">*</span></label>
+                    <p className="text-xs text-gray-500 mb-3">Pour accéder aux données confidentielles des startups, veuillez fournir un Kbis ou une pièce d'identité.</p>
+                    <div className="border-2 border-dashed border-orange-500/40 bg-orange-50/50 rounded-2xl p-6 text-center hover:bg-orange-50 transition-colors cursor-pointer relative shadow-sm">
+                      <input type="file" required={!mainFile} accept=".pdf,.jpg,.png" onChange={(e) => setMainFile(e.target.files?.[0] || null)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                      <ShieldCheck size={24} className="mx-auto text-orange-500 mb-2" />
+                      <p className="text-sm font-medium text-[#101D42]">{mainFile ? mainFile.name : "Importer votre document sécurisé"}</p>
+                    </div>
+                  </div>
+                </div>
+              </BorderGlow>
+            </>
+          )}
+
+          {/* CONDITIONS & SUBMIT (Commun aux 3 rôles) */}
+          <div className="pt-8">
+            <motion.div animate={shakeTerms ? { x: [-10, 10, -10, 10, 0] } : {}} transition={{ duration: 0.4 }} className="flex items-start gap-3 mb-8 bg-white p-5 rounded-2xl border border-[#101D42]/15 shadow-sm">
+              <input type="checkbox" id="terms" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className={`mt-1 w-5 h-5 rounded border-gray-300 focus:ring-2 ${userRole === 'mentor' ? 'text-emerald-500 focus:ring-emerald-500' : userRole === 'investor' ? 'text-orange-500 focus:ring-orange-500' : 'text-[#2563EB] focus:ring-[#2563EB]'}`} />
+              <label htmlFor="terms" className="text-sm text-gray-600 leading-relaxed cursor-pointer">
+                Je certifie que les informations fournies sont exactes. J'accepte que mon dossier soit examiné par le comité TechStratix.
+              </label>
+            </motion.div>
+
+            {errorMsg && <div className="mb-6 p-4 rounded-xl bg-red-50 text-red-600 text-sm font-medium flex items-center gap-2 border border-red-100"><AlertTriangle size={18} /> {errorMsg}</div>}
+
+            <StarBorder as="button" type="submit" disabled={saving} color={userRole === 'mentor' ? '#10b981' : userRole === 'investor' ? '#f97316' : '#2563EB'} className="w-full font-bold tracking-widest text-sm uppercase shadow-xl">
+              {saving ? <span className="flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={18} /> ENREGISTREMENT...</span> : "SOUMETTRE MON DOSSIER DÉFINITIF"}
+            </StarBorder>
+          </div>
+
+        </form>
+      </div>
+    </div>
+  );
+}
+
+
+===== FILE: app\page.tsx =====
+"use client";
+
+import Link from "next/link";
+import { motion, type Variants } from "framer-motion";
+import { ArrowRight, Play, Rocket, Users, TrendingUp, ShieldCheck, UserCheck, Network, Lock } from "lucide-react";
+import GooeyNav from "@/components/GooeyNav";
+import Lightfall from "@/components/Lightfall";
+
+const navItems = [
+  { label: "Notre approche", href: "#valeur" },
+  { label: "Profils", href: "#profils" },
+  { label: "Sélection", href: "#confiance" },
+];
+
+const fadeUp: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.6,
+      ease: "easeOut",
+    },
+  },
+};
+
+const staggerContainer: Variants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.15,
+    },
+  },
+};
+export default function LandingPage() {
+  
+  // Fonction pour remonter en haut de la page au clic sur le logo
+  const scrollToTop = (e: React.MouseEvent) => {
+    e.preventDefault();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] text-[#101D42] font-sans selection:bg-[#2563EB] selection:text-white overflow-x-hidden relative">
+      
+      {/* ========================================== */}
+      {/* FOND ANIMÉ 3D GLOBAL (Lightfall - Fixé)    */}
+      {/* ========================================== */}
+      <div className="fixed inset-0 w-screen h-screen z-0 pointer-events-none overflow-hidden opacity-40">
+        <Lightfall
+          colors={['#2563EB', '#101D42', '#60A5FA']} /* Palette TechStratix */
+          backgroundColor="#F8FAFC" /* Correspond au fond du site */
+          lightMode={true} /* Indispensable pour un fond clair */
+          speed={0.4} 
+          streakCount={4} 
+          streakWidth={1.5}
+          glow={0.5}
+          opacity={0.8}
+          mouseInteraction={true} /* Les faisceaux de lumière réagiront à la souris */
+        />
+      </div>
+
+      {/* ========================================== */}
+      {/* HEADER (Menu de navigation)                */}
+      {/* ========================================== */}
+      <header className="fixed top-0 w-full bg-white/70 backdrop-blur-md z-50 border-b border-gray-100/50 transition-all">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+          
+          {/* LOGO CLIQUABLE (Retour en haut) */}
+          <a href="#" onClick={scrollToTop} className="flex items-center gap-3 cursor-pointer group">
+            <div className="w-8 h-8 bg-[#101D42] rounded flex items-center justify-center shadow-sm group-hover:bg-[#2563EB] transition-colors">
+              <span className="text-white font-serif font-bold text-lg">T</span>
+            </div>
+            <span className="text-xl font-semibold tracking-tight text-[#101D42] hidden sm:block">TechStratix</span>
+          </a>
+
+          {/* GOOEY NAV */}
+          <div className="hidden md:block">
+            <GooeyNav items={navItems} />
+          </div>
+
+          <div className="flex items-center gap-4">
+            <Link href="/login" className="text-sm font-medium text-gray-600 hover:text-[#101D42] transition-colors hidden sm:block">
+              Se connecter
+            </Link>
+            <Link href="/register" className="bg-[#101D42] hover:bg-[#1a2b5e] text-white px-6 py-2.5 rounded-full text-sm font-semibold tracking-wide transition-all shadow-sm flex items-center gap-2 group">
+              Créer mon profil
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      {/* ========================================== */}
+      {/* CONTENU PRINCIPAL                          */}
+      {/* ========================================== */}
+      <main className="relative z-10">
+        
+        {/* ========================================== */}
+        {/* HERO SECTION                               */}
+        {/* ========================================== */}
+        <section className="relative pt-32 pb-24 md:pt-48 md:pb-32 px-6 min-h-[90vh] flex items-center bg-transparent">
+          <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-16 relative z-10 w-full mt-10 lg:mt-0">
+            
+            {/* TEXTE DE GAUCHE */}
+            <motion.div initial="hidden" animate="visible" variants={staggerContainer} className="flex-1 text-center lg:text-left">
+              <motion.h1 variants={fadeUp} className="text-5xl md:text-6xl lg:text-[4.5rem] font-semibold leading-[1.1] mb-6 tracking-tight text-[#101D42]">
+                L'espace où les projets ambitieux rencontrent l'expertise et le <span className="font-serif italic text-[#2563EB]">capital.</span>
+              </motion.h1>
+              
+              <motion.p variants={fadeUp} className="text-lg text-gray-500 mb-10 max-w-xl mx-auto lg:mx-0 leading-relaxed font-medium">
+                TechStratix réunit sur une plateforme unique les fondateurs qui construisent demain, les mentors qui les guident, et les investisseurs qui les financent.
+              </motion.p>
+              
+              <motion.div variants={fadeUp} className="flex flex-col sm:flex-row items-center gap-4 justify-center lg:justify-start">
+                <Link href="/register" className="w-full sm:w-auto bg-[#2563EB] hover:bg-blue-700 text-white px-8 py-4 rounded-full text-sm font-semibold tracking-wide transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 group">
+                  Créer mon profil
+                  <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                </Link>
+                <Link href="/login" className="w-full sm:w-auto bg-white/60 backdrop-blur-md border border-gray-200 hover:border-gray-300 hover:bg-white text-[#101D42] px-8 py-4 rounded-full text-sm font-semibold tracking-wide transition-all flex items-center justify-center">
+                  Accéder à la plateforme
+                </Link>
+              </motion.div>
+            </motion.div>
+
+            {/* VISUEL DE DROITE : LE TRIANGLE ORIGINAL SVG */}
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 1, delay: 0.2 }} className="flex-1 w-full relative h-[400px] hidden lg:block">
+              <div className="absolute inset-0 flex items-center justify-center">
+                
+                {/* Lignes du Triangle SVG dessinées exactement d'un centre à l'autre */}
+                <svg className="absolute w-[200px] h-[180px] z-0" viewBox="0 0 200 180" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -45%)' }}>
+                  <path d="M 100 0 L 0 180" stroke="#CBD5E1" strokeWidth="2" strokeDasharray="4 4"/>
+                  <path d="M 100 0 L 200 180" stroke="#CBD5E1" strokeWidth="2" strokeDasharray="4 4"/>
+                  <path d="M 0 180 L 200 180" stroke="#CBD5E1" strokeWidth="2" strokeDasharray="4 4"/>
+                </svg>
+
+                {/* Nœud du Haut (Startups) */}
+                <div className="absolute flex flex-col items-center z-10" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -170px)' }}>
+                  <div className="w-16 h-16 bg-white/90 backdrop-blur-sm border border-gray-100 rounded-2xl shadow-xl flex items-center justify-center text-[#2563EB] mb-3 relative group cursor-pointer hover:scale-110 transition-transform">
+                    <Rocket size={24} className="relative z-10" />
+                  </div>
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-widest bg-white/80 backdrop-blur-sm px-3 py-1 rounded-full border border-gray-100/50">Startups</span>
+                </div>
+
+                {/* Nœud Bas Gauche (Mentors) */}
+                <div className="absolute flex flex-col items-center z-10" style={{ top: '50%', left: '50%', transform: 'translate(-150px, 10px)' }}>
+                  <div className="w-16 h-16 bg-white/90 backdrop-blur-sm border border-gray-100 rounded-2xl shadow-xl flex items-center justify-center text-emerald-500 mb-3 relative group cursor-pointer hover:scale-110 transition-transform">
+                    <Users size={24} className="relative z-10" />
+                  </div>
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-widest bg-white/80 backdrop-blur-sm px-3 py-1 rounded-full border border-gray-100/50">Mentors</span>
+                </div>
+
+                {/* Nœud Bas Droit (Investisseurs) */}
+                <div className="absolute flex flex-col items-center z-10" style={{ top: '50%', left: '50%', transform: 'translate(50px, 10px)' }}>
+                  <div className="w-16 h-16 bg-white/90 backdrop-blur-sm border border-gray-100 rounded-2xl shadow-xl flex items-center justify-center text-orange-500 mb-3 relative group cursor-pointer hover:scale-110 transition-transform">
+                    <TrendingUp size={24} className="relative z-10" />
+                  </div>
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-widest bg-white/80 backdrop-blur-sm px-3 py-1 rounded-full border border-gray-100/50">Investisseurs</span>
+                </div>
+
+                {/* Centre TechStratix */}
+                <div className="absolute w-24 h-24 bg-[#101D42] rounded-full flex items-center justify-center shadow-2xl shadow-[#101D42]/20 z-20">
+                  <span className="text-white font-serif font-bold text-3xl">T</span>
+                </div>
+
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* ========================================== */}
+        {/* SECTION PROFILS                            */}
+        {/* ========================================== */}
+        <section id="profils" className="py-24 px-6 bg-transparent border-y border-gray-200/30 relative z-10">
+          <div className="max-w-7xl mx-auto">
+            
+            <div className="text-center mb-20">
+              <h2 className="text-3xl md:text-4xl font-medium tracking-tight text-[#101D42] mb-4">
+                Une infrastructure dédiée à chaque <span className="font-serif italic text-[#2563EB]">acteur</span>.
+              </h2>
+              <p className="text-gray-500 max-w-2xl mx-auto">Nous ne fournissons pas qu'un réseau. Nous fournissons les outils pour que chaque mise en relation génère de la valeur.</p>
+            </div>
+
+            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} variants={staggerContainer} className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
+              <motion.div variants={fadeUp} className="group bg-white/60 backdrop-blur-md p-8 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-md transition-all">
+                <div className="w-12 h-12 bg-blue-50 text-[#2563EB] rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                  <Rocket size={24} />
+                </div>
+                <h3 className="text-xl font-medium text-[#101D42] mb-3">Fondateurs</h3>
+                <p className="text-gray-500 text-sm leading-relaxed mb-6">
+                  Structurez votre projet, suivez vos objectifs de croissance et accédez à des formations ciblées. Préparez-vous sereinement avant d'être présenté aux investisseurs.
+                </p>
+                <Link href="/register" className="text-sm font-semibold text-[#2563EB] hover:text-[#101D42] flex items-center gap-1 transition-colors">
+                  Créer mon profil <ArrowRight size={14} />
+                </Link>
+              </motion.div>
+
+              <motion.div variants={fadeUp} className="group bg-white/60 backdrop-blur-md p-8 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-md transition-all">
+                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                  <Users size={24} />
+                </div>
+                <h3 className="text-xl font-medium text-[#101D42] mb-3">Mentors & Experts</h3>
+                <p className="text-gray-500 text-sm leading-relaxed mb-6">
+                  Partagez votre expertise avec des équipes sérieuses. Suivez l'évolution des startups qui vous sont assignées et validez leurs étapes clés via un tableau de bord pensé pour vous.
+                </p>
+                <Link href="/register" className="text-sm font-semibold text-emerald-600 hover:text-[#101D42] flex items-center gap-1 transition-colors">
+                  Créer mon profil <ArrowRight size={14} />
+                </Link>
+              </motion.div>
+
+              <motion.div variants={fadeUp} className="group bg-white/60 backdrop-blur-md p-8 rounded-[32px] border border-gray-100 shadow-sm hover:shadow-md transition-all">
+                <div className="w-12 h-12 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                  <TrendingUp size={24} />
+                </div>
+                <h3 className="text-xl font-medium text-[#101D42] mb-3">Investisseurs</h3>
+                <p className="text-gray-500 text-sm leading-relaxed mb-6">
+                  Découvrez des projets qualifiés. Accédez à un deal flow organisé, consultez les Data Rooms sécurisées et participez à notre Demo Day exclusif pour vos prochains investissements.
+                </p>
+                <Link href="/register" className="text-sm font-semibold text-orange-600 hover:text-[#101D42] flex items-center gap-1 transition-colors">
+                  Créer mon profil <ArrowRight size={14} />
+                </Link>
+              </motion.div>
+            </motion.div>
+
+          </div>
+        </section>
+
+        {/* ========================================== */}
+        {/* SECTION PROCESSUS                          */}
+        {/* ========================================== */}
+        <section id="valeur" className="py-24 px-6 bg-transparent relative z-10">
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-2xl md:text-3xl font-medium tracking-tight text-[#101D42] text-center mb-16">Le processus d'intégration</h2>
+            
+            <div className="space-y-12">
+              {[
+                { step: "01", title: "Création du dossier", desc: "Choisissez votre rôle et complétez les informations requises. Votre dossier est stocké en toute sécurité." },
+                { step: "02", title: "Examen par l'équipe", desc: "Nous examinons minutieusement chaque profil pour garantir la pertinence et le sérieux des échanges sur la plateforme." },
+                { step: "03", title: "Accès au Hub", desc: "Une fois validé, vous accédez à un espace de travail personnalisé selon vos objectifs (Formations, Mentorat, Sourcing)." },
+                { step: "04", title: "Mise en relation", desc: "Connectez-vous aux acteurs clés. Les startups prêtes sont présentées aux investisseurs lors d'événements dédiés." }
+              ].map((item, i) => (
+                <motion.div initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} transition={{ duration: 0.5, delay: i * 0.1 }} viewport={{ once: true }} key={i} className="flex gap-6 items-start bg-white/60 backdrop-blur-md p-6 rounded-2xl border border-gray-100 shadow-sm">
+                  <div className="text-3xl font-serif text-[#E2E8F0] font-light mt-1">{item.step}</div>
+                  <div>
+                    <h4 className="text-lg font-medium text-[#101D42] mb-2">{item.title}</h4>
+                    <p className="text-gray-500 text-sm leading-relaxed">{item.desc}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ========================================== */}
+        {/* SECTION CONFIANCE                          */}
+        {/* ========================================== */}
+        <section id="confiance" className="py-24 px-6 bg-transparent relative z-10">
+          <div className="max-w-7xl mx-auto bg-[#101D42]/95 backdrop-blur-xl rounded-[32px] overflow-hidden flex flex-col lg:flex-row shadow-xl border border-[#101D42]/20">
+            
+            <div className="p-12 lg:p-20 flex-1 flex flex-col justify-center">
+              <h2 className="text-3xl md:text-4xl font-medium text-white mb-6">La qualité par la <span className="font-serif italic text-[#2563EB]">sélection.</span></h2>
+              <p className="text-gray-400 text-sm leading-relaxed mb-10 max-w-md">
+                Nous ne croyons pas aux réseaux ouverts sans filtre. TechStratix est un environnement protégé. Les documents sont confidentiels, les profils vérifiés, et les mises en relation ont un véritable objectif d'affaires.
+              </p>
+              <ul className="space-y-4 text-sm text-gray-300 font-medium">
+                <li className="flex items-center gap-3"><ShieldCheck className="text-[#2563EB]" size={18} /> Données et Data Room privées</li>
+                <li className="flex items-center gap-3"><UserCheck className="text-[#2563EB]" size={18} /> Validation manuelle des identités</li>
+                <li className="flex items-center gap-3"><Lock className="text-[#2563EB]" size={18} /> Accès restreint au Deal Flow</li>
+              </ul>
+            </div>
+
+            <div className="bg-[#0b1430]/90 lg:w-2/5 p-12 lg:p-20 flex flex-col justify-center items-center text-center border-t lg:border-t-0 lg:border-l border-white/5">
+               <Network className="text-gray-500 mb-6" size={48} strokeWidth={1} />
+               <p className="text-white font-medium mb-2">Rejoignez le cercle restreint</p>
+               <p className="text-gray-500 text-xs mb-8">Les inscriptions spontanées sont soumises à approbation stricte.</p>
+               <Link href="/register" className="w-full bg-white hover:bg-gray-100 text-[#101D42] py-4 rounded-full text-sm font-semibold tracking-wide transition-colors shadow-lg">
+                  Créer mon profil
+               </Link>
+            </div>
+
+          </div>
+        </section>
+
+      </main>
+
+      {/* ========================================== */}
+      {/* FOOTER                                     */}
+      {/* ========================================== */}
+      <footer className="bg-transparent border-t border-gray-200/50 py-12 px-6 relative z-10">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-center gap-3">
+            <div className="w-6 h-6 bg-[#101D42] rounded flex items-center justify-center shadow-sm">
+              <span className="text-white font-serif font-bold text-[10px]">T</span>
+            </div>
+            <span className="text-sm font-medium tracking-tight text-[#101D42]">TechStratix</span>
+          </div>
+          
+          <div className="flex gap-6 text-sm text-gray-500 font-medium">
+            <Link href="/login" className="hover:text-[#101D42] transition-colors bg-white/60 px-4 py-1.5 rounded-full backdrop-blur-sm">Connexion</Link>
+            <Link href="/register" className="hover:text-[#101D42] transition-colors bg-white/60 px-4 py-1.5 rounded-full backdrop-blur-sm">Inscription</Link>
+          </div>
+
+          <p className="text-xs text-gray-500 bg-white/60 px-4 py-1.5 rounded-full backdrop-blur-sm">© 2026 TechStratix. Tous droits réservés.</p>
+        </div>
+      </footer>
+
+    </div>
+  );
+}
+
+
+===== FILE: app\register\page.tsx =====
+"use client";
+
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { Rocket, Users, TrendingUp, Loader2, ArrowLeft } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+
+const SLIDER_MESSAGES = [
+  {
+    title: "Accélérez votre croissance.",
+    desc: "Un écosystème conçu pour structurer votre projet, monter en compétences et réussir votre levée de fonds.",
+    icon: <Rocket size={32} className="text-[#2563EB]" />
+  },
+  {
+    title: "Transmettez votre expertise.",
+    desc: "Accompagnez des fondateurs ambitieux et participez activement à l'innovation de demain.",
+    icon: <Users size={32} className="text-emerald-400" />
+  },
+  {
+    title: "Découvrez les pépites tech.",
+    desc: "Un deal flow exclusif, qualifié et organisé pour vos prochains investissements stratégiques.",
+    icon: <TrendingUp size={32} className="text-orange-400" />
+  }
+];
+
+export default function RegisterPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [selectedRole, setSelectedRole] = useState("startup");
+  
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % SLIDER_MESSAGES.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+
+    if (password !== confirmPassword) {
+      setErrorMsg("Les mots de passe ne correspondent pas.");
+      return;
+    }
+    if (!fullName.trim()) {
+      setErrorMsg("Veuillez saisir votre nom complet.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { role: selectedRole, full_name: fullName } }
+      });
+      if (error) throw error;
+      router.push("/onboarding");
+    } catch (error: any) {
+      setErrorMsg(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex bg-[#FAFAFA]">
+      <div className="w-full lg:w-1/2 flex flex-col justify-center items-center p-8 overflow-y-auto">
+        <div className="w-full max-w-md">
+          
+          <Link href="/" className="inline-flex items-center gap-2 text-sm text-[#9CA3AF] hover:text-[#101D42] mb-10 transition-colors">
+            <ArrowLeft size={16} /> Retour à l'accueil
+          </Link>
+
+          <h1 className="text-3xl font-medium tracking-tight text-[#101D42] mb-2">Rejoindre TechStratix</h1>
+          <p className="text-[#9CA3AF] text-sm mb-8">Sélectionnez votre profil pour commencer.</p>
+
+          <form onSubmit={handleRegister} className="space-y-6">
+            <div className="grid grid-cols-3 gap-3">
+              <div onClick={() => setSelectedRole("startup")} className={`cursor-pointer border rounded-2xl p-4 flex flex-col items-center gap-3 transition-all ${selectedRole === "startup" ? "border-[#2563EB] bg-[#EFF6FF] text-[#2563EB] shadow-sm" : "border-gray-200 text-gray-400 hover:border-[#101D42]"}`}>
+                <Rocket size={24} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Startup</span>
+              </div>
+              <div onClick={() => setSelectedRole("mentor")} className={`cursor-pointer border rounded-2xl p-4 flex flex-col items-center gap-3 transition-all ${selectedRole === "mentor" ? "border-emerald-500 bg-emerald-50 text-emerald-600 shadow-sm" : "border-gray-200 text-gray-400 hover:border-emerald-500"}`}>
+                <Users size={24} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Mentor</span>
+              </div>
+              <div onClick={() => setSelectedRole("investor")} className={`cursor-pointer border rounded-2xl p-4 flex flex-col items-center gap-3 transition-all ${selectedRole === "investor" ? "border-orange-500 bg-orange-50 text-orange-600 shadow-sm" : "border-gray-200 text-gray-400 hover:border-orange-500"}`}>
+                <TrendingUp size={24} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Investisseur</span>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Nom Complet</label>
+                <input type="text" required value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" placeholder="Jean Dupont" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">E-mail</label>
+                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" placeholder="nom@exemple.com" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Mot de passe</label>
+                  <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" placeholder="••••••••" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold tracking-[0.1em] text-[#9CA3AF] uppercase mb-2">Confirmer</label>
+                  <input type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-[#2563EB] text-sm text-[#101D42]" placeholder="••••••••" />
+                </div>
+              </div>
+            </div>
+
+            {errorMsg && <div className="p-4 rounded-xl bg-red-50 border border-red-100 text-sm font-medium text-red-600">{errorMsg}</div>}
+
+            <button type="submit" disabled={loading} className="w-full bg-[#101D42] hover:bg-[#1a2b5e] text-white font-semibold py-4 rounded-full tracking-wide transition-colors text-sm disabled:opacity-70 mt-4">
+              {loading ? <Loader2 className="animate-spin mx-auto" size={20} /> : "CRÉER MON COMPTE"}
+            </button>
+          </form>
+          
+          <div className="mt-8 text-center text-sm">
+            <span className="text-[#9CA3AF]">Vous avez déjà un compte ?</span>{" "}
+            <Link href="/login" className="text-[#101D42] font-semibold hover:underline">Se connecter</Link>
+          </div>
+        </div>
+      </div>
+
+      {/* DROITE : LE PANNEAU MARKETING ANIMÉ */}
+      <div className="hidden lg:flex w-1/2 bg-[#060B14] p-16 flex-col justify-between relative overflow-hidden">
+        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-[#2563EB] opacity-20 rounded-full blur-[120px] pointer-events-none"></div>
+        <div className="absolute bottom-[-10%] left-[-10%] w-[400px] h-[400px] bg-emerald-500 opacity-10 rounded-full blur-[100px] pointer-events-none"></div>
+
+        <div className="relative z-10">
+          <Link href="/" className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-center shadow-lg">
+              <span className="text-white font-serif font-bold text-xl">T</span>
+            </div>
+            <span className="text-2xl font-medium tracking-tight text-white">TechStratix</span>
+          </Link>
+        </div>
+
+        <div className="relative z-10 h-64 flex flex-col justify-center">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentIndex}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+            >
+              <div className="mb-6 bg-white/5 w-16 h-16 rounded-2xl flex items-center justify-center border border-white/10 backdrop-blur-sm shadow-xl">
+                {SLIDER_MESSAGES[currentIndex].icon}
+              </div>
+              <h2 className="text-4xl lg:text-5xl font-medium text-white mb-6 leading-[1.1] tracking-tight">
+                {SLIDER_MESSAGES[currentIndex].title}
+              </h2>
+              <p className="text-gray-400 text-lg max-w-md leading-relaxed">
+                {SLIDER_MESSAGES[currentIndex].desc}
+              </p>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        <div className="relative z-10 flex gap-3 w-full max-w-sm">
+          {SLIDER_MESSAGES.map((_, i) => (
+            <div key={i} className="h-1 flex-1 bg-white/10 rounded-full overflow-hidden">
+              {i === currentIndex && (
+                <motion.div 
+                  initial={{ width: 0 }} 
+                  animate={{ width: "100%" }} 
+                  transition={{ duration: 5, ease: "linear" }}
+                  className="h-full bg-[#2563EB]"
+                />
+              )}
+              {i < currentIndex && <div className="h-full bg-[#2563EB]" />}
+            </div>
+          ))}
+        </div>
+
+      </div>
+    </div>
+  );
+}
